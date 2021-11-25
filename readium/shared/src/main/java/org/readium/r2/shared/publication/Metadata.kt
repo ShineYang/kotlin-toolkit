@@ -54,7 +54,7 @@ data class Metadata(
     val contributors: List<Contributor> = emptyList(),
     val publishers: List<Contributor> = emptyList(),
     val imprints: List<Contributor> = emptyList(),
-    val readingProgression: ReadingProgression = ReadingProgression.AUTO,
+    val readingProgression: ReadingProgression = ReadingProgression.LTR,
     val description: String? = null,
     val duration: Double? = null,
     val numberOfPages: Int? = null,
@@ -85,7 +85,7 @@ data class Metadata(
         contributors: List<Contributor> = emptyList(),
         publishers: List<Contributor> = emptyList(),
         imprints: List<Contributor> = emptyList(),
-        readingProgression: ReadingProgression = ReadingProgression.AUTO,
+        readingProgression: ReadingProgression = ReadingProgression.LTR,
         description: String? = null,
         duration: Double? = null,
         numberOfPages: Int? = null,
@@ -158,27 +158,7 @@ data class Metadata(
      */
     @IgnoredOnParcel
     val effectiveReadingProgression: ReadingProgression get() {
-        if (readingProgression != ReadingProgression.AUTO) {
-            return readingProgression
-        }
-
-        // https://github.com/readium/readium-css/blob/develop/docs/CSS16-internationalization.md#missing-page-progression-direction
-        if (languages.size != 1) {
-            return ReadingProgression.LTR
-        }
-
-        var language = languages.first().lowercase(Locale.ROOT)
-
-        if (language == "zh-hant" || language == "zh-tw") {
-            return ReadingProgression.RTL
-        }
-
-        // The region is ignored for ar, fa and he.
-        language = language.split("-", limit = 2).first()
-        return when (language) {
-            "ar", "fa", "he" -> ReadingProgression.RTL
-            else -> ReadingProgression.LTR
-        }
+        return ReadingProgression.LTR
     }
 
     /**
