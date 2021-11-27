@@ -46,6 +46,7 @@ function nearestInteractiveElement(element) {
     "audio",
     "button",
     "canvas",
+    "div",
     "details",
     "input",
     "label",
