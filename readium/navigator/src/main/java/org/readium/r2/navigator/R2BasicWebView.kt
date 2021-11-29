@@ -15,6 +15,7 @@ import android.net.Uri
 import android.os.Build
 import android.text.Html
 import android.util.AttributeSet
+import android.util.Log
 import android.view.*
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -218,38 +219,8 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
      */
     @android.webkit.JavascriptInterface
     fun onTap(eventJson: String): Boolean {
-        val event = TapEvent.fromJSON(eventJson) ?: return false
-
-        // The script prevented the default behavior.
-        if (event.defaultPrevented) {
-            return false
-        }
-
-        // FIXME: Let the app handle edge taps and footnotes.
-
-        // We ignore taps on interactive element, unless it's an element we handle ourselves such as
-        // pop-up footnotes.
-        if (event.interactiveElement != null) {
-            return handleFootnote(event.targetElement)
-        }
-
-        // Skips to previous/next pages if the tap is on the content edges.
-        val clientWidth = computeHorizontalScrollExtent()
-        val thresholdRange = 0.0..(0.2 * clientWidth)
-
-        // FIXME: Call listener.onTap if scrollLeft|Right fails
-        return when {
-            thresholdRange.contains(event.point.x) -> {
-                scrollLeft(false)
-                true
-            }
-            thresholdRange.contains(clientWidth - event.point.x) -> {
-                scrollRight(false)
-                true
-            }
-            else ->
-                runBlocking(uiScope.coroutineContext) { listener.onTap(event.point) }
-        }
+        Timber.tag("eventJson").v(eventJson)
+        return true
     }
 
     /**
