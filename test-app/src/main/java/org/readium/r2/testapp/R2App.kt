@@ -61,7 +61,7 @@ class R2App : Application() {
             }
             if (server.isAlive) {
 //                // Add your own resources here
-//                server.loadCustomResource(assets.open("scripts/test.js"), "test.js")
+                server.loadCustomResource(assets.open("paragraph.js"), "paragraph.js", Injectable.Script)
 //                server.loadCustomResource(assets.open("styles/test.css"), "test.css")
 //                server.loadCustomFont(assets.open("fonts/test.otf"), applicationContext, "test.otf")
 
