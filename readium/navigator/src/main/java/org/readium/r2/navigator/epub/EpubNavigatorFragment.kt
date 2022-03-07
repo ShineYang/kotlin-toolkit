@@ -274,6 +274,8 @@ class EpubNavigatorFragment private constructor(
     internal var pendingLocator: Locator? = null
 
     override fun go(locator: Locator, animated: Boolean, completion: () -> Unit): Boolean {
+        listener?.onJumpToLocator(locator)
+
         val href = locator.href
             // Remove anchor
             .substringBefore("#")
@@ -325,7 +327,8 @@ class EpubNavigatorFragment private constructor(
     }
 
     override fun go(link: Link, animated: Boolean, completion: () -> Unit): Boolean {
-        return go(link.toLocator(), animated, completion)
+        val locator = publication.locatorFromLink(link) ?: return false
+        return go(locator, animated, completion)
     }
 
     private fun run(commands: List<RunScriptCommand>) {
@@ -364,16 +367,31 @@ class EpubNavigatorFragment private constructor(
                 ?.let { tryOrLog { JSONObject(it) } }
                 ?: return null
 
+        val rect = json.optRectF("rect")
+            ?.apply { adjustToViewport() }
+
         return Selection(
             locator = currentLocator.value.copy(
                 text = Locator.Text.fromJSON(json.optJSONObject("text"))
             ),
-            rect = json.optRectF("rect")
+            rect = rect
         )
     }
 
     override fun clearSelection() {
         run(viewModel.clearSelection())
+    }
+
+    private fun PointF.adjustToViewport() {
+        currentFragment?.paddingTop?.let { top ->
+            y += top
+        }
+    }
+
+    private fun RectF.adjustToViewport() {
+        currentFragment?.paddingTop?.let { top ->
+            this.top += top
+        }
     }
 
     // DecorableNavigator
@@ -450,14 +468,13 @@ class EpubNavigatorFragment private constructor(
         }
 
         override fun onTap(point: PointF): Boolean {
+            point.adjustToViewport()
             return listener?.onTap(point) ?: false
         }
 
         override fun onDecorationActivated(id: DecorationId, group: String, rect: RectF, point: PointF): Boolean {
-            currentFragment?.paddingTop?.let { top ->
-                rect.top += top
-                point.y += top
-            }
+            rect.adjustToViewport()
+            point.adjustToViewport()
             return viewModel.onDecorationActivated(id, group, rect, point)
         }
 
@@ -622,7 +639,9 @@ class EpubNavigatorFragment private constructor(
         get() = publication.metadata.effectiveReadingProgression
 
     override val currentLocator: StateFlow<Locator> get() = _currentLocator
-    private val _currentLocator = MutableStateFlow(initialLocator ?: publication.readingOrder.first().toLocator())
+    private val _currentLocator = MutableStateFlow(initialLocator
+        ?: requireNotNull(publication.locatorFromLink(publication.readingOrder.first()))
+    )
 
     /**
      * While scrolling we receive a lot of new current locations, so we use a coroutine job to
