@@ -113,7 +113,6 @@ class LocatorTest {
             ).copyWithLocations(
                 fragments = listOf("p=4", "frag34"),
                 progression = 0.74,
-                position = 42,
                 totalProgression = 0.32,
                 otherLocations = mapOf("other" to "other-location")
             )
@@ -484,5 +483,4 @@ class LocatorCollectionTest {
             ).toJSON()
         )
     }
-
 }

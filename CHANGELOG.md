@@ -10,6 +10,63 @@ All notable changes to this project will be documented in this file. Take a look
 
 #### Shared
 
+* Extract the raw content (text, images, etc.) of a publication. [Take a look at the user guide](docs/guides/content.md).
+
+#### Navigator
+
+* Improved Javascript support in the EPUB navigator:
+    * Register custom [JavascriptInterface](https://developer.android.com/reference/android/webkit/JavascriptInterface) objects to inject native Kotlin code in the EPUB web views.
+        ```kotlin
+        EpubNavigatorFragment.createFactory(
+            publication = publication,
+            …,
+            config = EpubNavigatorFragment.Configuration().apply {
+                registerJavascriptInterface("customInterface") { link ->
+                    MyCustomApi(link)
+                }
+            }
+        )
+        
+        class MyCustomApi(val link: Link) {
+            @JavascriptInterface
+            fun api(arg: String): String {
+                return "API called from the resource ${link.href} with argument $arg")
+            }
+        }
+        ```
+    * Evaluate JavaScript on the currently visible HTML resource with `EpubNavigatorFragment.evaluateJavascript()`.
+        ```kotlin
+        val result = navigator.evaluateJavascript("customInterface.api('argument')")
+        ```
+* New [PSPDFKit](readium/adapters/pspdfkit) adapter for rendering PDF documents. [Take a look at the user guide](docs/guides/pdf.md).
+* A brand new text-to-speech implementation. [Take a look at the user guide](docs/guides/tts.md).
+
+### Changed
+
+#### Shared
+
+* `TransformingResource` now caches its content by default, as it is the correct behavior in most cases. Set `cacheBytes = false` explicitly to revert to the previous behavior.
+* The previous PDF navigator was extracted in its own package to support third-party PDF engines. **This is a breaking change** if your app supported PDF, take a look at [the migration guide](docs/migration-guide.md).
+
+### Fixed
+
+#### Streamer
+
+* Fixed parsing the table of contents of an EPUB 3 using NCX instead of a Navigation Document.
+
+#### Navigator
+
+* [swift-toolkit#61](https://github.com/readium/swift-toolkit/issues/61) Fixed serving EPUB resources when the HREF contains an anchor or query parameters.
+* Fixed emitting `currentLocator` with fixed layout EPUBs.
+* Prevent refreshing an already loaded EPUB resource when jumping to a `Locator` in it.
+
+
+## [2.2.0]
+
+### Added
+
+#### Shared
+
 * A new `Publication.conformsTo()` API to identify the profile of a publication.
 * Support for the [`conformsTo` RWPM metadata](https://github.com/readium/webpub-manifest/issues/65), to identify the profile of a `Publication`.
 
@@ -32,10 +89,13 @@ All notable changes to this project will be documented in this file. Take a look
 * The new `Navigator.Listener.onJumpToLocator()` API is called every time the navigator jumps to an explicit location, which might break the linear reading progression.
     * For example, it is called when clicking on internal links or programmatically calling `Navigator.go()`, but not when turning pages.
     * You can use this callback to implement a navigation history by differentiating between continuous and discontinuous moves.
+* You can now disable the display cutouts padding in the EPUB navigator (contributed by [@szymn](https://github.com/readium/kotlin-toolkit/pull/101)).
+    * This is useful when the navigator is not laid out full screen.
 * (*experimental*) A new audiobook navigator based on Jetpack `media2`.
     * See the [pull request #80](https://github.com/readium/kotlin-toolkit/pull/80) for the differences with the previous audiobook navigator.
     * This navigator is located in its own module `readium-navigator-media2`. You will need to add it to your dependencies to use it.
     * The Test App demonstrates how to use the new audiobook navigator, see `MediaService` and `AudioReaderFragment`.
+* (*experimental*) The EPUB navigator now supports overridable drag gestures. See `VisualNavigator.Listener`.
 
 ### Deprecated
 
@@ -459,10 +519,10 @@ progression. Now if no reading progression is set, the `effectiveReadingProgress
   * **This is a breaking change**, [to upgrade your app you need to](https://github.com/readium/r2-testapp-kotlin/pull/321/files#diff-9bb6ad21df8b48f171ba6266616662ac):
     * Provide the application's `Context` when creating a `Server`.
     * Remove the following injection statements, which are now handled directly by the Streamer:
-```kotlin
-server.loadCustomResource(assets.open("scripts/crypto-sha256.js"), "crypto-sha256.js", Injectable.Script)   
-server.loadCustomResource(assets.open("scripts/highlight.js"), "highlight.js", Injectable.Script)
-```
+        ```kotlin
+        server.loadCustomResource(assets.open("scripts/crypto-sha256.js"), "crypto-sha256.js", Injectable.Script)   
+        server.loadCustomResource(assets.open("scripts/highlight.js"), "highlight.js", Injectable.Script)
+        ```
 
 #### Navigator
 
@@ -522,5 +582,7 @@ server.loadCustomResource(assets.open("scripts/highlight.js"), "highlight.js", I
 
 
 [unreleased]: https://github.com/readium/kotlin-toolkit/compare/main...HEAD
-[2.1.0]: https://github.com/readium/kotlin-kotlin/compare/2.0.0...2.1.0
-[2.1.1]: https://github.com/readium/kotlin-kotlin/compare/2.1.0...2.1.1
+[2.1.0]: https://github.com/readium/kotlin-toolkit/compare/2.0.0...2.1.0
+[2.1.1]: https://github.com/readium/kotlin-toolkit/compare/2.1.0...2.1.1
+[2.2.0]: https://github.com/readium/kotlin-toolkit/compare/2.1.1...2.2.0
+

@@ -7,10 +7,10 @@
 import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
-    id("com.android.application") version ("7.1.0") apply false
-    id("com.android.library") version ("7.1.0") apply false
-    id("org.jetbrains.kotlin.android") version ("1.6.10") apply false
-    id("org.jetbrains.dokka") version ("1.6.10") apply true
+    id("com.android.application") apply false
+    id("com.android.library") apply false
+    id("org.jetbrains.kotlin.android") apply false
+    id("org.jetbrains.dokka") apply true
 }
 
 subprojects {
@@ -29,7 +29,7 @@ tasks.register("clean", Delete::class).configure {
 }
 
 tasks.register("cleanDocs", Delete::class).configure {
-    delete("${project.rootDir}/docs/readium", "${project.rootDir}/docs/index.md")
+    delete("${project.rootDir}/docs/readium", "${project.rootDir}/docs/index.md", "${project.rootDir}/site")
 }
 
 tasks.withType<DokkaTaskPartial>().configureEach {

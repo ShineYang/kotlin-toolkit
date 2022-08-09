@@ -30,8 +30,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.json.JSONObject
 import org.jsoup.Jsoup
-import org.jsoup.safety.Whitelist
+import org.jsoup.safety.Safelist
 import org.readium.r2.navigator.extensions.optRectF
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.optNullableString
 import org.readium.r2.shared.extensions.tryOrLog
 import org.readium.r2.shared.extensions.tryOrNull
@@ -53,12 +54,18 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         fun onPageEnded(end: Boolean)
         fun onScroll()
         fun onTap(point: PointF): Boolean
+        fun onDragStart(event: DragEvent): Boolean
+        fun onDragMove(event: DragEvent): Boolean
+        fun onDragEnd(event: DragEvent): Boolean
         fun onDecorationActivated(id: DecorationId, group: String, rect: RectF, point: PointF): Boolean = false
         fun onProgressionChanged()
         fun onHighlightActivated(id: String)
         fun onHighlightAnnotationMarkActivated(id: String)
         fun goForward(animated: Boolean = false, completion: () -> Unit = {}): Boolean
         fun goBackward(animated: Boolean = false, completion: () -> Unit = {}): Boolean
+
+        @InternalReadiumApi
+        fun javascriptInterfacesForResource(link: Link): Map<String, Any?> = emptyMap()
 
         /**
          * Returns the custom [ActionMode.Callback] to be used with the text selection menu.
@@ -72,7 +79,6 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     }
 
     lateinit var listener: Listener
-    lateinit var navigator: Navigator
     internal var preferences: SharedPreferences? = null
 
     var resourceUrl: String? = null
@@ -306,7 +312,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
             ?.first()?.html()
             ?: return false
 
-        val safe = Jsoup.clean(aside, Whitelist.relaxed())
+        val safe = Jsoup.clean(aside, Safelist.relaxed())
 
         // Initialize a new instance of LayoutInflater service
         val inflater = context.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
@@ -350,6 +356,71 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         mPopupWindow.showAtLocation(this, Gravity.CENTER, 0, 0)
 
         return true
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onDragStart(eventJson: String): Boolean {
+        val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
+            ?: return false
+
+        return runBlocking(uiScope.coroutineContext) { listener.onDragStart(event) }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onDragMove(eventJson: String): Boolean {
+        val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
+            ?: return false
+
+        return runBlocking(uiScope.coroutineContext) { listener.onDragMove(event) }
+    }
+
+    @android.webkit.JavascriptInterface
+    fun onDragEnd(eventJson: String): Boolean {
+        val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
+            ?: return false
+
+        return runBlocking(uiScope.coroutineContext) { listener.onDragEnd(event) }
+    }
+
+    /** Produced by gestures.js */
+    data class DragEvent(
+        val defaultPrevented: Boolean,
+        val startPoint: PointF,
+        val currentPoint: PointF,
+        val offset: PointF,
+        val interactiveElement: String?
+    ) {
+        internal val isValid: Boolean get() =
+            !defaultPrevented && (interactiveElement == null)
+
+        companion object {
+            fun fromJSONObject(obj: JSONObject?): DragEvent? {
+                obj ?: return null
+
+                val x = obj.optDouble("x").toFloat()
+                val y = obj.optDouble("y").toFloat()
+
+                return DragEvent(
+                    defaultPrevented = obj.optBoolean("defaultPrevented"),
+                    startPoint = PointF(
+                        obj.optDouble("startX").toFloat(),
+                        obj.optDouble("startY").toFloat()
+                    ),
+                    currentPoint = PointF(
+                        obj.optDouble("currentX").toFloat(),
+                        obj.optDouble("currentY").toFloat()
+                    ),
+                    offset = PointF(
+                        obj.optDouble("offsetX").toFloat(),
+                        obj.optDouble("offsetY").toFloat()
+                    ),
+                    interactiveElement = obj.optNullableString("interactiveElement")
+                )
+            }
+
+            fun fromJSON(json: String): DragEvent? =
+                fromJSONObject(tryOrNull { JSONObject(json) })
+        }
     }
 
     @android.webkit.JavascriptInterface
@@ -422,6 +493,11 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     fun getCurrentSelectionRect(callback: (String) -> Unit) {
         runJavaScript("getSelectionRect();", callback)
     }
+
+    internal suspend fun findFirstVisibleLocator(): Locator? =
+        runJavaScriptSuspend("readium.findFirstVisibleLocator();")
+            .let { tryOrNull { JSONObject(it) } }
+            ?.let { Locator.fromJSON(it) }
 
     fun createHighlight(locator: String?, color: String?, callback: (String) -> Unit) {
         uiScope.launch {
