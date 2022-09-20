@@ -14,6 +14,7 @@ package org.readium.r2.navigator.pager
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.SharedPreferences
+import android.graphics.Bitmap
 import android.graphics.PointF
 import android.os.Bundle
 import android.util.DisplayMetrics
@@ -178,8 +179,15 @@ class R2EpubPageFragment : Fragment() {
 
         webView.webViewClient = object : WebViewClientCompat() {
 
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                (webView as? R2BasicWebView)?.shouldOverrideUrlLoading(request) ?: false
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val paragraph = request?.url?.getQueryParameters("paragraphText")
+                return if (paragraph != null && paragraph.size > 0){
+                    true
+                }else {
+                    (webView as? R2BasicWebView)?.shouldOverrideUrlLoading(request) ?: false
+                }
+
+            }
 
             override fun shouldOverrideKeyEvent(view: WebView, event: KeyEvent): Boolean {
                 // Do something with the event here
@@ -195,11 +203,55 @@ class R2EpubPageFragment : Fragment() {
                 // we execute a dummy JavaScript and wait for the callback result.
                 webView.evaluateJavascript("true") {
                     onLoadPage()
+
+                    webView.evaluateJavascript("checkInjection();") { checkInjection ->
+                        println("checkInjection $checkInjection");
+                        if (!checkInjection.contains("ok")) {
+                            webView.reload()
+                        }
+                    }
+                }
+            }
+
+
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                super.onPageStarted(view, url, favicon)
+
+                injectResource() {
+
                 }
             }
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 (webView as? R2BasicWebView)?.shouldInterceptRequest(view, request)
+
+            fun injectResource( valueCallback: (String?) -> Unit) {
+                val readerCssURL = EpubNavigatorFragment.assetUrl("reader.css")
+                val readerScriptURL = EpubNavigatorFragment.assetUrl("reader.js")
+
+                webView.evaluateJavascript(
+                    """
+                        function loadStyle(src) {
+                         let link = document.createElement('link');
+                         link.href = src;
+                         link.rel = 'stylesheet';
+                         document.head.append(link);
+                       };
+                       
+                       function loadScript(src) {
+                         let script = document.createElement('script');
+                         script.src = src;
+                         document.head.append(script);
+                       };
+    
+                       loadStyle("$readerCssURL");
+                       loadScript("$readerScriptURL");
+                    
+      """
+                ) {
+                    valueCallback(it)
+                }
+            }
         }
 
         webView.isHapticFeedbackEnabled = false

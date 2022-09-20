@@ -14,11 +14,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
 import org.readium.r2.navigator.Navigator
 import org.readium.r2.navigator.epub.EpubSettings
-import org.readium.r2.navigator.settings.Configurable
-import org.readium.r2.navigator.settings.MutablePreferences
-import org.readium.r2.navigator.settings.Preferences
-import org.readium.r2.navigator.settings.Theme
+import org.readium.r2.navigator.settings.*
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.ReadingProgression
 import org.readium.r2.testapp.reader.NavigatorKind
 
 /**
@@ -68,13 +66,44 @@ class UserSettingsViewModel(
             configurable.settings
                 .flowWithLifecycle(lifecycle)
                 .onEach {
-                    _settings.value = it
+
+                    var newSettings = (it as EpubSettings.Reflowable).copy(
+                        verticalText = ToggleSetting(
+                            key = Setting.VERTICAL_TEXT,
+                            value = false,
+                        ),
+                        readingProgression = EnumSetting(
+                            key = Setting.READING_PROGRESSION,
+                            value = ReadingProgression.LTR,
+                            values = listOf(ReadingProgression.LTR, ReadingProgression.RTL),
+                        )
+                    )
+                    _settings.value = newSettings
                 }
                 .launchIn(lifecycleScope)
 
             preferences
                 .flowWithLifecycle(lifecycle)
-                .onEach { configurable.submitPreferences(it) }
+                .onEach {
+
+                    val preference = it.toMutablePreferences()
+
+                    preference.set(
+                        EnumSetting(
+                            key = Setting.READING_PROGRESSION,
+                            value = ReadingProgression.LTR,
+                            values = listOf(ReadingProgression.LTR, ReadingProgression.RTL),
+                        ), preference = ReadingProgression.LTR, activate = true)
+
+                    preference.set(
+                        ToggleSetting(
+                            key = Setting.VERTICAL_TEXT,
+                            value = false,
+                        ), preference = false, activate =  true)
+
+
+                    configurable.submitPreferences(preference)
+                }
                 .launchIn(lifecycleScope)
         }
     }
