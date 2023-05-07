@@ -53,8 +53,7 @@ open class MediaService : MediaBrowserServiceCompat(), CoroutineScope by MainSco
      * The default implementation uses ExoPlayer.
      */
     open fun onCreatePlayer(mediaSession: MediaSessionCompat, media: PendingMedia): MediaPlayer =
-        ExoMediaPlayer(this, mediaSession, media)
-
+        SimpleMediaPlayer(this, mediaSession, media)
     /**
      * Called when the underlying [MediaPlayer] was stopped.
      */
