@@ -32,7 +32,7 @@ data class EpubDefaults(
     val paragraphIndent: Double? = null,
     val paragraphSpacing: Double? = null,
     val publisherStyles: Boolean? = null,
-    val readingProgression: ReadingProgression? = null,
+    val readingProgression: ReadingProgression? = ReadingProgression.LTR,
     val scroll: Boolean? = null,
     val spread: Spread? = null,
     val textAlign: TextAlign? = null,
