@@ -97,6 +97,6 @@ mavenPublishing {
         }
     }
 
-    publishToMavenCentral(SonatypeHost.S01)
-    signAllPublications()
+    // publishToMavenCentral(SonatypeHost.S01)
+    // signAllPublications()
 }
