@@ -1,3 +1,9 @@
+/*
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
+ */
+
 package org.readium.r2.navigator.epub
 
 import org.readium.r2.navigator.epub.css.ReadiumCss
@@ -16,7 +22,12 @@ import timber.log.Timber
  * @param baseHref Base URL where the Readium CSS and scripts are served.
  */
 @OptIn(ExperimentalReadiumApi::class)
-internal fun Resource.injectHtml(publication: Publication, css: ReadiumCss, baseHref: String): Resource =
+internal fun Resource.injectHtml(
+    publication: Publication,
+    css: ReadiumCss,
+    baseHref: String,
+    disableSelectionWhenProtected: Boolean
+): Resource =
     TransformingResource(this) { bytes ->
         val link = link()
         check(link.mediaType.isHtml)
@@ -34,15 +45,17 @@ internal fun Resource.injectHtml(publication: Publication, css: ReadiumCss, base
 
         // Disable the text selection if the publication is protected.
         // FIXME: This is a hack until proper LCP copy is implemented, see https://github.com/readium/kotlin-toolkit/issues/221
-        if (publication.isProtected) {
-            injectables.add("""
+        if (disableSelectionWhenProtected && publication.isProtected) {
+            injectables.add(
+                """
                 <style>
                 *:not(input):not(textarea) {
                     user-select: none;
                     -webkit-user-select: none;
                 }
                 </style>
-            """)
+            """
+            )
         }
 
         val headEndIndex = content.indexOf("</head>", 0, true)

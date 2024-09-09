@@ -4,9 +4,12 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(org.readium.r2.shared.InternalReadiumApi::class)
+
 package org.readium.r2.navigator.tts
 
 import android.content.Context
+import java.util.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.readium.r2.shared.DelicateReadiumApi
 import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.tryOrLog
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -23,7 +27,6 @@ import org.readium.r2.shared.publication.services.content.TextContentTokenizer
 import org.readium.r2.shared.publication.services.content.content
 import org.readium.r2.shared.util.*
 import org.readium.r2.shared.util.tokenizer.TextUnit
-import java.util.*
 
 /**
  * [PublicationSpeechSynthesizer] orchestrates the rendition of a [publication] by iterating through
@@ -34,6 +37,7 @@ import java.util.*
  */
 @OptIn(DelicateReadiumApi::class)
 @ExperimentalReadiumApi
+@Deprecated("The API described in this guide will be changed in the next version of the Kotlin toolkit to support background TTS playback and media notifications. It is recommended that you wait before integrating it in your app.")
 class PublicationSpeechSynthesizer<E : TtsEngine> private constructor(
     private val publication: Publication,
     config: Configuration,
@@ -94,8 +98,8 @@ class PublicationSpeechSynthesizer<E : TtsEngine> private constructor(
          */
         val defaultTokenizerFactory: (Language?) -> ContentTokenizer = { language ->
             TextContentTokenizer(
-                unit = TextUnit.Sentence,
-                defaultLanguage = language
+                language = language,
+                unit = TextUnit.Sentence
             )
         }
 
@@ -122,8 +126,8 @@ class PublicationSpeechSynthesizer<E : TtsEngine> private constructor(
     ) : kotlin.Exception(message, cause) {
 
         /** Underlying [TtsEngine] error. */
-        class Engine(val error: TtsEngine.Exception)
-            : Exception(error.message, error)
+        class Engine(val error: TtsEngine.Exception) :
+            Exception(error.message, error)
     }
 
     /**
@@ -422,11 +426,12 @@ class PublicationSpeechSynthesizer<E : TtsEngine> private constructor(
             ?.let { voiceWithId(it) }
             ?.takeIf { language == null || it.language.removeRegion() == language.removeRegion() }
 
-        return Either(voice
-            ?: language
-            ?: config.value.defaultLanguage
-            ?: publication.metadata.language
-            ?: Language(Locale.getDefault())
+        return Either(
+            voice
+                ?: language
+                ?: config.value.defaultLanguage
+                ?: publication.metadata.language
+                ?: Language(Locale.getDefault())
         )
     }
 
@@ -459,9 +464,9 @@ class PublicationSpeechSynthesizer<E : TtsEngine> private constructor(
 
         utterances = CursorList(
             list = nextUtterances,
-            startIndex = when (direction) {
-                Direction.Forward -> 0
-                Direction.Backward -> nextUtterances.size - 1
+            index = when (direction) {
+                Direction.Forward -> -1
+                Direction.Backward -> nextUtterances.size
             }
         )
 

@@ -10,12 +10,13 @@
   -->
 
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
-    package="org.readium.r2.testapp">
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <!-- android:networkSecurityConfig is required for r2-lcp-kotlin and r2-navigator-kotlin -->
     <application
@@ -190,16 +191,27 @@
             android:name=".reader.ReaderActivity"
             android:label="Reader" />
 
-        <service android:name=".MediaService"
+        <service android:name=".reader.tts.TtsService"
+            android:enabled="true"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback"
+            tools:ignore="ExportedService">
+
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService"/>
+                <action android:name="android.media.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <service android:name=".reader.MediaService"
             android:enabled="true"
             android:exported="true"
             tools:ignore="ExportedService">
 
             <intent-filter>
-                <action android:name="androidx.media2.session.MediaSessionService" />
+                <action android:name="androidx.media2.session.MediaSessionService"/>
             </intent-filter>
         </service>
-
 
     </application>
 

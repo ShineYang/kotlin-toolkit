@@ -18,31 +18,41 @@ class JSONTest {
     }
 
     @Test fun `unpack a JSONObject`() {
-        val sut = JSONObject("""{
+        val sut = JSONObject(
+            """{
             "a": 1,
             "b": "hello",
             "c": true
-        }""")
+        }"""
+        )
 
-        assertEquals(sut.toMap(), mapOf(
-            "a" to 1,
-            "b" to "hello",
-            "c" to true
-        ))
+        assertEquals(
+            sut.toMap(),
+            mapOf(
+                "a" to 1,
+                "b" to "hello",
+                "c" to true
+            )
+        )
     }
 
     @Test fun `unpack a nested JSONObject`() {
-        val sut = JSONObject("""{
+        val sut = JSONObject(
+            """{
             "a": 1,
             "b": { "b.1": "hello" },
             "c": [true, 42, "world"]
-        }""")
+        }"""
+        )
 
-        assertEquals(sut.toMap(), mapOf(
-            "a" to 1,
-            "b" to mapOf("b.1" to "hello"),
-            "c" to listOf(true, 42, "world")
-        ))
+        assertEquals(
+            sut.toMap(),
+            mapOf(
+                "a" to 1,
+                "b" to mapOf("b.1" to "hello"),
+                "c" to listOf(true, 42, "world")
+            )
+        )
     }
 
     @Test fun `unpack an empty JSONArray`() {
@@ -58,19 +68,30 @@ class JSONTest {
     }
 
     @Test fun `unpack a nested JSONArray`() {
-        val sut = JSONArray("""[
+        val sut = JSONArray(
+            """[
             1,
             { "b.1": "hello" },
             [true, 42, "world"]
-        ]""")
+        ]"""
+        )
 
-        assertEquals(sut.toList(), listOf(
-            1,
-            mapOf("b.1" to "hello"),
-            listOf(true, 42, "world")
-        ))
+        assertEquals(
+            sut.toList(),
+            listOf(
+                1,
+                mapOf("b.1" to "hello"),
+                listOf(true, 42, "world")
+            )
+        )
     }
 
+    @Test
+    fun `optNullableString() handles ill-typed values`() {
+        val sut = JSONObject("""{ "key": ["jhhh", "mlkk"] }""")
+
+        assertNull(sut.optNullableString("key"))
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -86,5 +107,4 @@ class JSONAndroidTest {
 
         assertNull(sut.optNullableString("key"))
     }
-
 }

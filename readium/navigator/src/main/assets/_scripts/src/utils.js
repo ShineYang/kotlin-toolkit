@@ -19,15 +19,10 @@ window.addEventListener(
   "load",
   function () {
     const observer = new ResizeObserver(() => {
-      appendVirtualColumnIfNeeded();
-    });
-    observer.observe(document.body);
-
-    window.addEventListener("orientationchange", function () {
       onViewportWidthChanged();
       snapCurrentOffset();
     });
-    onViewportWidthChanged();
+    observer.observe(document.body);
   },
   false
 );
@@ -75,6 +70,8 @@ function onViewportWidthChanged() {
     "--RS__viewportWidth",
     "calc(" + width + "px / " + window.devicePixelRatio + ")"
   );
+
+  appendVirtualColumnIfNeeded();
 }
 
 export function getColumnCountPerScreen() {
@@ -147,8 +144,7 @@ function scrollToRange(range) {
 
 function scrollToRect(rect) {
   if (isScrollModeEnabled()) {
-    document.scrollingElement.scrollTop =
-      rect.top + window.scrollY - window.innerHeight / 2;
+    document.scrollingElement.scrollTop = rect.top + window.scrollY;
   } else {
     document.scrollingElement.scrollLeft = snapOffset(
       rect.left + window.scrollX
@@ -232,29 +228,53 @@ export function snapCurrentOffset() {
 }
 
 export function rangeFromLocator(locator) {
-  let text = locator.text;
-  if (!text || !text.highlight) {
-    return null;
-  }
   try {
-    var root;
     let locations = locator.locations;
-    if (locations && locations.cssSelector) {
-      root = document.querySelector(locations.cssSelector);
-    }
-    if (!root) {
-      root = document.body;
+    let text = locator.text;
+    if (text && text.highlight) {
+      var root;
+      if (locations && locations.cssSelector) {
+        root = document.querySelector(locations.cssSelector);
+      }
+      if (!root) {
+        root = document.body;
+      }
+
+      let anchor = new TextQuoteAnchor(root, text.highlight, {
+        prefix: text.before,
+        suffix: text.after,
+      });
+      return anchor.toRange();
     }
 
-    let anchor = new TextQuoteAnchor(root, text.highlight, {
-      prefix: text.before,
-      suffix: text.after,
-    });
-    return anchor.toRange();
+    if (locations) {
+      var element = null;
+
+      if (!element && locations.cssSelector) {
+        element = document.querySelector(locations.cssSelector);
+      }
+
+      if (!element && locations.fragments) {
+        for (const htmlId of locations.fragments) {
+          element = document.getElementById(htmlId);
+          if (element) {
+            break;
+          }
+        }
+      }
+
+      if (element) {
+        let range = document.createRange();
+        range.setStartBefore(element);
+        range.setEndAfter(element);
+        return range;
+      }
+    }
   } catch (e) {
     logError(e);
-    return null;
   }
+
+  return null;
 }
 
 /// User Settings.
@@ -267,11 +287,13 @@ export function setCSSProperties(properties) {
 
 // For setting user setting.
 export function setProperty(key, value) {
-  if (value === null) {
+  if (value === null || value === "") {
     removeProperty(key);
   } else {
     var root = document.documentElement;
-    root.style.setProperty(key, value);
+    // The `!important` annotation is added with `setProperty()` because if it's part of the
+    // `value`, it will be ignored by the Web View.
+    root.style.setProperty(key, value, "important");
   }
 }
 

@@ -7,10 +7,15 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
+@file:OptIn(org.readium.r2.shared.InternalReadiumApi::class)
+
 package org.readium.r2.streamer.parser.readium
 
 import android.content.Context
+import java.io.File
+import java.io.FileNotFoundException
 import kotlinx.coroutines.runBlocking
+import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.PdfSupport
 import org.readium.r2.shared.drm.DRM
 import org.readium.r2.shared.fetcher.*
@@ -32,8 +37,6 @@ import org.readium.r2.streamer.fetcher.LcpDecryptor
 import org.readium.r2.streamer.parser.PubBox
 import org.readium.r2.streamer.parser.audio.AudioLocatorService
 import org.readium.r2.streamer.toPublicationType
-import java.io.File
-import java.io.FileNotFoundException
 
 /**
  * Parses any Readium Web Publication package or manifest, e.g. WebPub, Audiobook, DiViNa, LCPDF...
@@ -155,7 +158,7 @@ private suspend fun Fetcher.isProtectedWithLcp(): Boolean =
     get("license.lcpl").use { it.length().isSuccess }
 
 /** Returns whether this media type is of a Readium Web Publication profile. */
-private val MediaType.isReadiumWebPubProfile: Boolean get() =  matchesAny(
+private val MediaType.isReadiumWebPubProfile: Boolean get() = matchesAny(
     MediaType.READIUM_WEBPUB, MediaType.READIUM_WEBPUB_MANIFEST,
     MediaType.READIUM_AUDIOBOOK, MediaType.READIUM_AUDIOBOOK_MANIFEST, MediaType.LCP_PROTECTED_AUDIOBOOK,
     MediaType.DIVINA, MediaType.DIVINA_MANIFEST, MediaType.LCP_PROTECTED_PDF

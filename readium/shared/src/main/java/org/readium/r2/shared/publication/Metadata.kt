@@ -1,15 +1,13 @@
 /*
- * Module: r2-shared-kotlin
- * Developers: Aferdita Muriqi, Clément Baumann, Mickaël Menu
- *
- * Copyright (c) 2020. Readium Foundation. All rights reserved.
- * Use of this source code is governed by a BSD-style license which is detailed in the
- * LICENSE file present in the project repository where this source code is maintained.
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
  */
 
 package org.readium.r2.shared.publication
 
 import android.os.Parcelable
+import java.util.*
 import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 import kotlinx.parcelize.WriteWith
@@ -21,7 +19,6 @@ import org.readium.r2.shared.publication.presentation.presentation
 import org.readium.r2.shared.util.Language
 import org.readium.r2.shared.util.logging.WarningLogger
 import org.readium.r2.shared.util.logging.log
-import java.util.*
 
 /**
  * https://readium.org/webpub-manifest/schema/metadata.schema.json
@@ -41,6 +38,7 @@ data class Metadata(
     val localizedSortAs: LocalizedString? = null,
     val modified: Date? = null,
     val published: Date? = null,
+    val accessibility: Accessibility? = null,
     val languages: List<String> = emptyList(), // BCP 47 tag
     val subjects: List<Subject> = emptyList(),
     val authors: List<Contributor> = emptyList(),
@@ -73,6 +71,7 @@ data class Metadata(
         localizedSortAs: LocalizedString? = null,
         modified: Date? = null,
         published: Date? = null,
+        accessibility: Accessibility? = null,
         languages: List<String> = emptyList(), // BCP 47 tag
         subjects: List<Subject> = emptyList(),
         authors: List<Contributor> = emptyList(),
@@ -96,7 +95,7 @@ data class Metadata(
         belongsToCollections: List<Collection> = emptyList(),
         belongsToSeries: List<Collection> = emptyList(),
         otherMetadata: Map<String, Any> = mapOf()
-    ): this(
+    ) : this(
         identifier = identifier,
         type = type,
         conformsTo = conformsTo,
@@ -105,6 +104,7 @@ data class Metadata(
         localizedSortAs = localizedSortAs,
         modified = modified,
         published = published,
+        accessibility = accessibility,
         languages = languages,
         subjects = subjects,
         authors = authors,
@@ -168,6 +168,7 @@ data class Metadata(
      *
      * See this issue for more details: https://github.com/readium/architecture/issues/113
      */
+    @Deprecated("You should resolve [ReadingProgression.AUTO] by yourself.", level = DeprecationLevel.WARNING)
     @IgnoredOnParcel
     val effectiveReadingProgression: ReadingProgression get() {
         return ReadingProgression.LTR
@@ -184,6 +185,7 @@ data class Metadata(
         putIfNotEmpty("subtitle", localizedSubtitle)
         put("modified", modified?.toIso8601String())
         put("published", published?.toIso8601String())
+        put("accessibility", accessibility?.toJSON())
         putIfNotEmpty("language", languages)
         putIfNotEmpty("sortAs", localizedSortAs)
         putIfNotEmpty("subject", subjects)
@@ -240,6 +242,7 @@ data class Metadata(
             val localizedSubtitle = LocalizedString.fromJSON(json.remove("subtitle"), warnings)
             val modified = (json.remove("modified") as? String)?.iso8601ToDate()
             val published = (json.remove("published") as? String)?.iso8601ToDate()
+            val accessibility = Accessibility.fromJSON(json.remove("accessibility"))
             val languages = json.optStringsFromArrayOrSingle("language", remove = true)
             val localizedSortAs = LocalizedString.fromJSON(json.remove("sortAs"), warnings)
             val subjects = Subject.fromJSONArray(json.remove("subject"), normalizeHref, warnings)
@@ -262,10 +265,10 @@ data class Metadata(
             val numberOfPages = json.optPositiveInt("numberOfPages", remove = true)
 
             val belongsToJson = (
-                json.remove("belongsTo") as? JSONObject ?:
-                json.remove("belongs_to") as? JSONObject ?:
-                JSONObject()
-            )
+                json.remove("belongsTo") as? JSONObject
+                    ?: json.remove("belongs_to") as? JSONObject
+                    ?: JSONObject()
+                )
 
             val belongsTo = mutableMapOf<String, List<Collection>>()
             for (key in belongsToJson.keys()) {
@@ -284,6 +287,7 @@ data class Metadata(
                 localizedSortAs = localizedSortAs,
                 modified = modified,
                 published = published,
+                accessibility = accessibility,
                 languages = languages,
                 subjects = subjects,
                 authors = authors,
@@ -307,7 +311,6 @@ data class Metadata(
                 otherMetadata = json.toMap()
             )
         }
-
     }
 
     @Deprecated("Use [type] instead", ReplaceWith("type"))
@@ -342,5 +345,4 @@ data class Metadata(
 
     @Deprecated("Renamed into [toJSON]", ReplaceWith("toJSON()"))
     fun writeJSON(): JSONObject = toJSON()
-
 }

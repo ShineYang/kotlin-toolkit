@@ -7,20 +7,15 @@
 import org.jetbrains.dokka.gradle.DokkaTaskPartial
 
 plugins {
-    id("com.android.application") apply false
-    id("com.android.library") apply false
-    id("org.jetbrains.kotlin.android") apply false
-    id("org.jetbrains.dokka") apply true
+    alias(libs.plugins.dokka)
+    alias(libs.plugins.ktlint)
 }
 
 subprojects {
-    tasks.register<Jar>("javadocsJar") {
-        archiveClassifier.set("javadoc")
-    }
+    apply(plugin = "org.jlleitschuh.gradle.ktlint")
 
-    tasks.register<Jar>("sourcesJar") {
-        archiveClassifier.set("sources")
-        from("src/main/java", "src/main/resources")
+    ktlint {
+        android.set(true)
     }
 }
 

@@ -7,7 +7,7 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
-@file:OptIn(ExperimentalReadiumApi::class)
+@file:OptIn(ExperimentalReadiumApi::class, InternalReadiumApi::class)
 
 package org.readium.r2.navigator.pager
 
@@ -23,10 +23,11 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.core.view.ViewCompat
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.ViewModelProvider
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.webkit.WebViewClientCompat
+import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.readium.r2.navigator.R
@@ -35,7 +36,6 @@ import org.readium.r2.navigator.R2WebView
 import org.readium.r2.navigator.databinding.ViewpagerFragmentEpubBinding
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.navigator.epub.EpubNavigatorViewModel
-import org.readium.r2.navigator.epub.EpubSettings
 import org.readium.r2.navigator.extensions.htmlId
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.InternalReadiumApi
@@ -43,7 +43,6 @@ import org.readium.r2.shared.SCROLL_REF
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.ReadingProgression
-import kotlin.math.roundToInt
 
 class R2EpubPageFragment : Fragment() {
 
@@ -63,7 +62,7 @@ class R2EpubPageFragment : Fragment() {
 
     private lateinit var containerView: View
     private lateinit var preferences: SharedPreferences
-    private lateinit var viewModel: EpubNavigatorViewModel
+    private val viewModel: EpubNavigatorViewModel by viewModels(ownerProducer = { requireParentFragment() })
 
     private var _binding: ViewpagerFragmentEpubBinding? = null
     private val binding get() = _binding!!
@@ -102,17 +101,35 @@ class R2EpubPageFragment : Fragment() {
     private val shouldApplyInsetsPadding: Boolean
         get() = navigator?.config?.shouldApplyInsetsPadding ?: true
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putInt(textZoomBundleKey, textZoom)
+
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onViewStateRestored(savedInstanceState: Bundle?) {
+        super.onViewStateRestored(savedInstanceState)
+
+        savedInstanceState
+            ?.getInt(textZoomBundleKey)
+            ?.takeIf { it > 0 }
+            ?.let { textZoom = it }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingLocator = requireArguments().getParcelable("initialLocator")
     }
 
     @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
         _binding = ViewpagerFragmentEpubBinding.inflate(inflater, container, false)
         containerView = binding.root
         preferences = activity?.getSharedPreferences("org.readium.r2.settings", Context.MODE_PRIVATE)!!
-        viewModel = ViewModelProvider(requireParentFragment()).get(EpubNavigatorViewModel::class.java)
 
         val webView = binding.webView
         this.webView = webView
@@ -136,6 +153,7 @@ class R2EpubPageFragment : Fragment() {
             @Suppress("DEPRECATION")
             webView.setScrollMode(preferences.getBoolean(SCROLL_REF, false))
         }
+        webView.useLegacySettings = viewModel.useLegacySettings
         webView.settings.javaScriptEnabled = true
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
@@ -147,14 +165,19 @@ class R2EpubPageFragment : Fragment() {
         webView.settings.textZoom = textZoom
         webView.resourceUrl = resourceUrl
         webView.setPadding(0, 0, 0, 0)
+        webView.addJavascriptInterface(webView, "Android")
 
         var endReached = false
         webView.setOnOverScrolledCallback(object : R2BasicWebView.OnOverScrolledCallback {
-            override fun onOverScrolled(scrollX: Int, scrollY: Int, clampedX: Boolean, clampedY: Boolean) {
+            override fun onOverScrolled(
+                scrollX: Int,
+                scrollY: Int,
+                clampedX: Boolean,
+                clampedY: Boolean
+            ) {
                 val activity = activity ?: return
                 val metrics = DisplayMetrics()
                 activity.windowManager.defaultDisplay.getMetrics(metrics)
-
 
                 val topDecile = webView.contentHeight - 1.15 * metrics.heightPixels
                 val bottomDecile = (webView.contentHeight - metrics.heightPixels).toDouble()
@@ -163,13 +186,13 @@ class R2EpubPageFragment : Fragment() {
                     in topDecile..bottomDecile -> {
                         if (!endReached) {
                             endReached = true
-                            webView.listener.onPageEnded(endReached)
+                            webView.listener?.onPageEnded(endReached)
                         }
                     }
                     else -> {
                         if (endReached) {
                             endReached = false
-                            webView.listener.onPageEnded(endReached)
+                            webView.listener?.onPageEnded(endReached)
                         }
                     }
                 }
@@ -189,7 +212,7 @@ class R2EpubPageFragment : Fragment() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 super.onPageFinished(view, url)
 
-                webView.listener.onResourceLoaded(link, webView, url)
+                webView.listener?.onResourceLoaded(link, webView, url)
 
                 // To make sure the page is properly laid out before jumping to the target locator,
                 // we execute a dummy JavaScript and wait for the callback result.
@@ -219,7 +242,7 @@ class R2EpubPageFragment : Fragment() {
         // Forward a tap event when the web view is not ready to propagate the taps. This allows
         // to toggle a navigation UI while a page is loading, for example.
         binding.root.setOnClickListenerWithPoint { _, point ->
-            webView.listener.onTap(point)
+            webView.listener?.onTap(point)
         }
 
         return containerView
@@ -229,18 +252,20 @@ class R2EpubPageFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         if (!viewModel.useLegacySettings) {
-            val isScrollEnabled = viewModel.settings
-                .filterIsInstance<EpubSettings.Reflowable>()
-                .map { it.scroll?.value ?: true }
-                .distinctUntilChanged()
-
             val lifecycleOwner = viewLifecycleOwner
             lifecycleOwner.lifecycleScope.launch {
-                isScrollEnabled
+                viewModel.isScrollEnabled
                     .flowWithLifecycle(lifecycleOwner.lifecycle)
                     .collectLatest { webView?.scrollModeFlow?.value = it }
             }
         }
+    }
+
+    override fun onDestroyView() {
+        webView?.listener = null
+        _binding = null
+
+        super.onDestroyView()
     }
 
     override fun onDetach() {
@@ -253,11 +278,6 @@ class R2EpubPageFragment : Fragment() {
             wv.removeAllViews()
             wv.destroy()
         }
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        _binding = null
     }
 
     private fun setupPadding() {
@@ -302,7 +322,7 @@ class R2EpubPageFragment : Fragment() {
                 }
             }
 
-            if (!viewModel.isScrollEnabled) {
+            if (!viewModel.isScrollEnabled.value) {
                 val margin = resources.getDimension(R.dimen.r2_navigator_epub_vertical_padding).toInt()
                 top += margin
                 bottom += margin
@@ -338,7 +358,7 @@ class R2EpubPageFragment : Fragment() {
                 }
                 .also { pendingLocator = null }
 
-            webView.listener.onPageLoaded()
+            webView.listener?.onPageLoaded()
         }
     }
 
@@ -352,11 +372,15 @@ class R2EpubPageFragment : Fragment() {
             val webView = requireNotNull(webView)
             val epubNavigator = requireNotNull(navigator)
             loadLocator(webView, epubNavigator.readingProgression, locator)
-            webView.listener.onProgressionChanged()
+            webView.listener?.onProgressionChanged()
         }
     }
 
-    private suspend fun loadLocator(webView: R2WebView, readingProgression: ReadingProgression, locator: Locator) {
+    private suspend fun loadLocator(
+        webView: R2WebView,
+        readingProgression: ReadingProgression,
+        locator: Locator
+    ) {
         val text = locator.text
         if (text.highlight != null) {
             if (webView.scrollToText(text)) {
@@ -379,7 +403,6 @@ class R2EpubPageFragment : Fragment() {
 
         if (webView.scrollMode) {
             webView.scrollToPosition(progression)
-
         } else {
             // Figure out the target web view "page" from the requested
             // progression.
@@ -392,7 +415,14 @@ class R2EpubPageFragment : Fragment() {
     }
 
     companion object {
-        fun newInstance(url: String, link: Link? = null, initialLocator: Locator? = null, positionCount: Int = 0): R2EpubPageFragment =
+        private const val textZoomBundleKey = "org.readium.textZoom"
+
+        fun newInstance(
+            url: String,
+            link: Link? = null,
+            initialLocator: Locator? = null,
+            positionCount: Int = 0
+        ): R2EpubPageFragment =
             R2EpubPageFragment().apply {
                 arguments = Bundle().apply {
                     putString("url", url)

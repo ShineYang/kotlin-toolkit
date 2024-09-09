@@ -1,10 +1,7 @@
 /*
- * Module: r2-shared-kotlin
- * Developers: Mickaël Menu
- *
- * Copyright (c) 2020. Readium Foundation. All rights reserved.
- * Use of this source code is governed by a BSD-style license which is detailed in the
- * LICENSE file present in the project repository where this source code is maintained.
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
  */
 
 package org.readium.r2.shared.publication
@@ -35,16 +32,28 @@ class MetadataTest {
                 identifier = "1234",
                 type = "epub",
                 conformsTo = setOf(Publication.Profile.EPUB, Publication.Profile.PDF),
-                localizedTitle = LocalizedString.fromStrings(mapOf(
-                    "en" to "Title",
-                    "fr" to "Titre"
-                )),
-                localizedSubtitle = LocalizedString.fromStrings(mapOf(
-                    "en" to "Subtitle",
-                    "fr" to "Sous-titre"
-                )),
+                localizedTitle = LocalizedString.fromStrings(
+                    mapOf(
+                        "en" to "Title",
+                        "fr" to "Titre"
+                    )
+                ),
+                localizedSubtitle = LocalizedString.fromStrings(
+                    mapOf(
+                        "en" to "Subtitle",
+                        "fr" to "Sous-titre"
+                    )
+                ),
+                accessibility = Accessibility(
+                    conformsTo = setOf(Accessibility.Profile.EPUB_A11Y_10_WCAG_20_A),
+                    accessModes = setOf(Accessibility.AccessMode.TEXTUAL),
+                    accessModesSufficient = setOf(setOf(Accessibility.PrimaryAccessMode.TEXTUAL)),
+                    features = setOf(Accessibility.Feature.ARIA),
+                    hazards = setOf(Accessibility.Hazard.FLASHING)
+                ),
                 modified = "2001-01-01T12:36:27.000Z".iso8601ToDate(),
                 published = "2001-01-02T12:36:27.000Z".iso8601ToDate(),
+
                 languages = listOf("en", "fr"),
                 localizedSortAs = LocalizedString("sort key"),
                 subjects = listOf(Subject(name = "Science Fiction"), Subject(name = "Fantasy")),
@@ -79,7 +88,9 @@ class MetadataTest {
                     "other-metadata2" to listOf(42)
                 )
             ),
-            Metadata.fromJSON(JSONObject("""{
+            Metadata.fromJSON(
+                JSONObject(
+                    """{
                 "identifier": "1234",
                 "@type": "epub",
                 "conformsTo": [
@@ -90,6 +101,13 @@ class MetadataTest {
                 "subtitle": {"en": "Subtitle", "fr": "Sous-titre"},
                 "modified": "2001-01-01T12:36:27.000Z",
                 "published": "2001-01-02T12:36:27.000Z",
+                "accessibility": {
+                    "conformsTo": "http://www.idpf.org/epub/a11y/accessibility-20170105.html#wcag-a",
+                    "accessMode": ["textual"],
+                    "accessModeSufficient": ["textual"],
+                    "hazard": ["flashing"],
+                    "feature": ["ARIA"]
+                },
                 "language": ["en", "fr"],
                 "sortAs": "sort key",
                 "subject": ["Science Fiction", "Fantasy"],
@@ -118,7 +136,9 @@ class MetadataTest {
                 },
                 "other-metadata1": "value",
                 "other-metadata2": [42]
-            }"""))
+            }"""
+                )
+            )
         )
     }
 
@@ -132,10 +152,14 @@ class MetadataTest {
                 conformsTo = setOf(Publication.Profile.DIVINA),
                 localizedTitle = LocalizedString("Title"),
             ),
-            Metadata.fromJSON(JSONObject("""{
+            Metadata.fromJSON(
+                JSONObject(
+                    """{
                 "title": "Title",
                 "conformsTo": "https://readium.org/webpub-manifest/profiles/divina"
-            }"""))
+            }"""
+                )
+            )
         )
     }
 
@@ -145,10 +169,14 @@ class MetadataTest {
                 localizedTitle = LocalizedString("Title"),
                 languages = listOf("fr")
             ),
-            Metadata.fromJSON(JSONObject("""{
+            Metadata.fromJSON(
+                JSONObject(
+                    """{
                 "title": "Title",
                 "language": "fr"
-            }"""))
+            }"""
+                )
+            )
         )
     }
 
@@ -172,17 +200,20 @@ class MetadataTest {
 
     @Test fun `get minimal JSON`() {
         assertJSONEquals(
-            JSONObject("""{
+            JSONObject(
+                """{
                 "title": {"und": "Title"},
                 "readingProgression": "auto"
-            }"""),
+            }"""
+            ),
             Metadata(localizedTitle = LocalizedString("Title")).toJSON()
         )
     }
 
     @Test fun `get full JSON`() {
         assertJSONEquals(
-            JSONObject("""{
+            JSONObject(
+                """{
                 "identifier": "1234",
                 "@type": "epub",
                 "conformsTo": [
@@ -193,6 +224,13 @@ class MetadataTest {
                 "subtitle": {"en": "Subtitle", "fr": "Sous-titre"},
                 "modified": "2001-01-01T12:36:27.000Z",
                 "published": "2001-01-02T12:36:27.000Z",
+                "accessibility": {
+                    "conformsTo": ["http://www.idpf.org/epub/a11y/accessibility-20170105.html#wcag-a"],
+                    "accessMode": ["textual"],
+                    "accessModeSufficient": [["textual"]],
+                    "hazard": ["flashing"],
+                    "feature": ["ARIA"]
+                },
                 "language": ["en", "fr"],
                 "sortAs": {"en": "sort key", "fr": "clé de tri"},
                 "subject": [
@@ -223,26 +261,40 @@ class MetadataTest {
                 },
                 "other-metadata1": "value",
                 "other-metadata2": [42]
-            }"""),
+            }"""
+            ),
             Metadata(
                 identifier = "1234",
                 type = "epub",
                 conformsTo = setOf(Publication.Profile.EPUB, Publication.Profile.PDF),
-                localizedTitle = LocalizedString.fromStrings(mapOf(
-                    "en" to "Title",
-                    "fr" to "Titre"
-                )),
-                localizedSubtitle = LocalizedString.fromStrings(mapOf(
-                    "en" to "Subtitle",
-                    "fr" to "Sous-titre"
-                )),
+                localizedTitle = LocalizedString.fromStrings(
+                    mapOf(
+                        "en" to "Title",
+                        "fr" to "Titre"
+                    )
+                ),
+                localizedSubtitle = LocalizedString.fromStrings(
+                    mapOf(
+                        "en" to "Subtitle",
+                        "fr" to "Sous-titre"
+                    )
+                ),
                 modified = "2001-01-01T12:36:27.000Z".iso8601ToDate(),
                 published = "2001-01-02T12:36:27.000Z".iso8601ToDate(),
+                accessibility = Accessibility(
+                    conformsTo = setOf(Accessibility.Profile.EPUB_A11Y_10_WCAG_20_A),
+                    accessModes = setOf(Accessibility.AccessMode.TEXTUAL),
+                    accessModesSufficient = setOf(setOf(Accessibility.PrimaryAccessMode.TEXTUAL)),
+                    features = setOf(Accessibility.Feature.ARIA),
+                    hazards = setOf(Accessibility.Hazard.FLASHING)
+                ),
                 languages = listOf("en", "fr"),
-                localizedSortAs = LocalizedString.fromStrings(mapOf(
-                    "en" to "sort key",
-                    "fr" to "clé de tri"
-                )),
+                localizedSortAs = LocalizedString.fromStrings(
+                    mapOf(
+                        "en" to "sort key",
+                        "fr" to "clé de tri"
+                    )
+                ),
                 subjects = listOf(Subject(name = "Science Fiction"), Subject(name = "Fantasy")),
                 authors = listOf(Contributor(name = "Author")),
                 translators = listOf(Contributor(name = "Translator")),
@@ -270,45 +322,6 @@ class MetadataTest {
                 )
             ).toJSON()
         )
-    }
-
-    @Test
-    fun `effectiveReadingProgression falls back on LTR`() {
-        val metadata = createMetadata(languages = emptyList(), readingProgression = ReadingProgression.AUTO)
-        assertEquals(ReadingProgression.LTR, metadata.effectiveReadingProgression)
-    }
-
-    @Test
-    fun `effectiveReadingProgression falls back on priveded reading progression`() {
-        val metadata = createMetadata(languages = emptyList(), readingProgression = ReadingProgression.RTL)
-        assertEquals(ReadingProgression.RTL, metadata.effectiveReadingProgression)
-    }
-
-    @Test
-    fun `effectiveReadingProgression with RTL languages`() {
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("zh-Hant"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("zh-TW"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("ar"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("fa"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("he"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        assertEquals(ReadingProgression.LTR, createMetadata(languages = listOf("he"), readingProgression = ReadingProgression.LTR).effectiveReadingProgression)
-    }
-
-    @Test
-    fun `effectiveReadingProgression ignores multiple languages`() {
-        assertEquals(ReadingProgression.LTR, createMetadata(languages = listOf("ar", "fa"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-    }
-
-    @Test
-    fun `effectiveReadingProgression ignores language case`() {
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("AR"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-    }
-
-    @Test
-    fun `effectiveReadingProgression ignores language region, except for Chinese`() {
-        assertEquals(ReadingProgression.RTL, createMetadata(languages = listOf("ar-foo"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
-        // But not for ZH
-        assertEquals(ReadingProgression.LTR, createMetadata(languages = listOf("zh-foo"), readingProgression = ReadingProgression.AUTO).effectiveReadingProgression)
     }
 
     @Test fun `get primary language with no language`() {

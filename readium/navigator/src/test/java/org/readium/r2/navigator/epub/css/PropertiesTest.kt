@@ -1,10 +1,16 @@
+/*
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
+ */
+
 package org.readium.r2.navigator.epub.css
 
+import android.graphics.Color as AndroidColor
+import kotlin.test.assertEquals
 import org.junit.Test
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.util.Either
-import kotlin.test.assertEquals
-import android.graphics.Color as AndroidColor
 
 @OptIn(ExperimentalReadiumApi::class)
 class PropertiesTest {
@@ -255,8 +261,8 @@ class PropertiesTest {
     fun `Generate minimal inline CSS properties`() {
         assertEquals(
             """
-                --USER__view: readium-scroll-on;
-                --USER__colCount: auto;
+                --USER__view: readium-scroll-on !important;
+                --USER__colCount: auto !important;
                 
             """.trimIndent(),
             UserProperties(
@@ -270,28 +276,28 @@ class PropertiesTest {
     fun `Generate full inline CSS properties`() {
         assertEquals(
             """
-                --USER__view: readium-scroll-on;
-                --USER__colCount: auto;
-                --USER__pageMargins: 1.2;
-                --USER__appearance: readium-night-on;
-                --USER__darkenImages: readium-darken-on;
-                --USER__invertImages: readium-invert-on;
-                --USER__textColor: #FF0000;
-                --USER__backgroundColor: #00FF00;
-                --USER__fontOverride: readium-font-on;
-                --USER__fontFamily: "Times New", "Comic Sans";
-                --USER__fontSize: 2.3vmax;
-                --USER__advancedSettings: readium-advanced-on;
-                --USER__typeScale: 3.4;
-                --USER__textAlign: justify;
-                --USER__lineHeight: 4.5pt;
-                --USER__paraSpacing: 5.6pt;
-                --USER__paraIndent: 6.7rem;
-                --USER__wordSpacing: 7.8rem;
-                --USER__letterSpacing: 8.9rem;
-                --USER__bodyHyphens: auto;
-                --USER__ligatures: common-ligatures;
-                --USER__a11yNormalize: readium-a11y-on;
+                --USER__view: readium-scroll-on !important;
+                --USER__colCount: auto !important;
+                --USER__pageMargins: 1.2 !important;
+                --USER__appearance: readium-night-on !important;
+                --USER__darkenImages: readium-darken-on !important;
+                --USER__invertImages: readium-invert-on !important;
+                --USER__textColor: #FF0000 !important;
+                --USER__backgroundColor: #00FF00 !important;
+                --USER__fontOverride: readium-font-on !important;
+                --USER__fontFamily: "Times New", "Comic Sans" !important;
+                --USER__fontSize: 2.3vmax !important;
+                --USER__advancedSettings: readium-advanced-on !important;
+                --USER__typeScale: 3.4 !important;
+                --USER__textAlign: justify !important;
+                --USER__lineHeight: 4.5pt !important;
+                --USER__paraSpacing: 5.6pt !important;
+                --USER__paraIndent: 6.7rem !important;
+                --USER__wordSpacing: 7.8rem !important;
+                --USER__letterSpacing: 8.9rem !important;
+                --USER__bodyHyphens: auto !important;
+                --USER__ligatures: common-ligatures !important;
+                --USER__a11yNormalize: readium-a11y-on !important;
                 
             """.trimIndent(),
             UserProperties(

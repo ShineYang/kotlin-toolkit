@@ -1,3 +1,11 @@
+/*
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
+ */
+
+@file:OptIn(org.readium.r2.shared.InternalReadiumApi::class)
+
 package org.readium.r2.navigator.epub
 
 import android.app.Application
@@ -29,6 +37,7 @@ internal class WebViewServer(
     private val application: Application,
     private val publication: Publication,
     servedAssets: List<String>,
+    private val disableSelectionWhenProtected: Boolean
 ) {
     companion object {
         val publicationBaseHref = "https://readium/publication/"
@@ -79,7 +88,11 @@ internal class WebViewServer(
         var resource = publication.get(link)
             .fallback { errorResource(link, error = it) }
         if (link.mediaType.isHtml) {
-            resource = resource.injectHtml(publication, css, baseHref = assetsBaseHref)
+            resource = resource.injectHtml(
+                publication, css,
+                baseHref = assetsBaseHref,
+                disableSelectionWhenProtected = disableSelectionWhenProtected
+            )
         }
 
         val headers = mutableMapOf(
@@ -88,7 +101,6 @@ internal class WebViewServer(
 
         if (range == null) {
             return WebResourceResponse(link.type, null, 200, "OK", headers, ResourceInputStream(resource))
-
         } else { // Byte range request
             val stream = ResourceInputStream(resource)
             val length = stream.available()

@@ -20,23 +20,27 @@ import androidx.fragment.app.commitNow
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import org.readium.r2.navigator.DecorableNavigator
+import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.ExperimentalDecorator
-import org.readium.r2.navigator.Navigator
-import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.*
+import org.readium.r2.navigator.epub.css.FontStyle
 import org.readium.r2.navigator.html.HtmlDecorationTemplate
 import org.readium.r2.navigator.html.toCss
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
+import org.readium.r2.shared.publication.epub.pageList
+import org.readium.r2.testapp.LITERATA
 import org.readium.r2.testapp.R
+import org.readium.r2.testapp.reader.preferences.UserPreferencesViewModel
 import org.readium.r2.testapp.search.SearchFragment
 
 @OptIn(ExperimentalReadiumApi::class, ExperimentalDecorator::class)
 class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listener {
 
-    override lateinit var navigator: Navigator
-    private lateinit var navigatorFragment: EpubNavigatorFragment
+    override lateinit var navigator: EpubNavigatorFragment
 
     private lateinit var menuSearch: MenuItem
     lateinit var menuSearchView: SearchView
@@ -48,26 +52,53 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
             isSearchViewIconified = savedInstanceState.getBoolean(IS_SEARCH_VIEW_ICONIFIED)
         }
 
-        val readerData = model.readerInitData as VisualReaderInitData
+        val readerData = model.readerInitData as? EpubReaderInitData ?: run {
+            // We provide a dummy fragment factory  if the ReaderActivity is restored after the
+            // app process was killed because the ReaderRepository is empty. In that case, finish
+            // the activity as soon as possible and go back to the previous one.
+            childFragmentManager.fragmentFactory = EpubNavigatorFragment.createDummyFactory()
+            super.onCreate(savedInstanceState)
+            requireActivity().finish()
+            return
+        }
 
         childFragmentManager.fragmentFactory =
-            EpubNavigatorFragment.createFactory(
-                publication = publication,
+            readerData.navigatorFactory.createFragmentFactory(
                 initialLocator = readerData.initialLocation,
                 listener = this,
-                config = EpubNavigatorFragment.Configuration(
-                    preferences = model.settings.preferences.value,
+                initialPreferences = readerData.preferencesManager.preferences.value,
+                configuration = EpubNavigatorFragment.Configuration {
+                    // To customize the text selection menu.
+                    selectionActionModeCallback = customSelectionActionModeCallback
+
                     // App assets which will be accessible from the EPUB resources.
                     // You can use simple glob patterns, such as "images/.*" to allow several
                     // assets in one go.
                     servedAssets = listOf(
-                        /** Icon for the annotation side mark, see [annotationMarkTemplate]. */
+                        // For the custom font Literata.
+                        "fonts/.*",
+                        // Icon for the annotation side mark, see [annotationMarkTemplate].
                         "annotation-icon.svg"
                     )
-                ).apply {
-                    // Register the HTML template for our custom [DecorationStyleAnnotationMark].
+
+                    // Register the HTML templates for our custom decoration styles.
                     decorationTemplates[DecorationStyleAnnotationMark::class] = annotationMarkTemplate()
-                    selectionActionModeCallback = customSelectionActionModeCallback
+                    decorationTemplates[DecorationStylePageNumber::class] = pageNumberTemplate()
+
+                    // Declare a custom font family for reflowable EPUBs.
+                    addFontFamilyDeclaration(FontFamily.LITERATA) {
+                        addFontFace {
+                            addSource("fonts/Literata-VariableFont_opsz,wght.ttf")
+                            setFontStyle(FontStyle.NORMAL)
+                            // Literata is a variable font family, so we can provide a font weight range.
+                            setFontWeight(200..900)
+                        }
+                        addFontFace {
+                            addSource("fonts/Literata-Italic-VariableFont_opsz,wght.ttf")
+                            setFontStyle(FontStyle.ITALIC)
+                            setFontWeight(200..900)
+                        }
+                    }
                 }
             )
 
@@ -77,7 +108,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
             FragmentResultListener { _, result ->
                 menuSearch.collapseActionView()
                 result.getParcelable<Locator>(SearchFragment::class.java.name)?.let {
-                    navigatorFragment.go(it)
+                    navigator.go(it)
                 }
             }
         )
@@ -87,17 +118,20 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
         super.onCreate(savedInstanceState)
     }
 
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View {
         val view = super.onCreateView(inflater, container, savedInstanceState)
-        val navigatorFragmentTag = getString(R.string.epub_navigator_tag)
+        val navigatorFragmentTag = getString(org.readium.r2.navigator.R.string.epub_navigator_tag)
 
         if (savedInstanceState == null) {
             childFragmentManager.commitNow {
                 add(R.id.fragment_reader_container, EpubNavigatorFragment::class.java, Bundle(), navigatorFragmentTag)
             }
         }
-        navigator = childFragmentManager.findFragmentByTag(navigatorFragmentTag) as Navigator
-        navigatorFragment = navigator as EpubNavigatorFragment
+        navigator = childFragmentManager.findFragmentByTag(navigatorFragmentTag) as EpubNavigatorFragment
 
         return view
     }
@@ -105,16 +139,38 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-       // This is a hack to draw the right background color on top and bottom blank spaces
-        viewLifecycleOwner.lifecycleScope.launchWhenStarted {
+        @Suppress("Unchecked_cast")
+        (model.settings as UserPreferencesViewModel<EpubSettings, EpubPreferences>)
+            .bind(navigator, viewLifecycleOwner)
+
+        viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                model.settings.theme
-                    .onEach { theme ->
-                        navigatorFragment.resourcePager.setBackgroundColor(theme.backgroundColor)
-                    }
-                    .launchIn(this)
+                // Display page number labels if the book contains a `page-list` navigation document.
+                (navigator as? DecorableNavigator)?.applyPageNumberDecorations()
             }
         }
+    }
+
+    /**
+     * Will display margin labels next to page numbers in an EPUB publication with a `page-list`
+     * navigation document.
+     *
+     * See http://kb.daisy.org/publishing/docs/navigation/pagelist.html
+     */
+    private suspend fun DecorableNavigator.applyPageNumberDecorations() {
+        val decorations = publication.pageList
+            .mapIndexedNotNull { index, link ->
+                val label = link.title ?: return@mapIndexedNotNull null
+                val locator = publication.locatorFromLink(link) ?: return@mapIndexedNotNull null
+
+                Decoration(
+                    id = "page-$index",
+                    locator = locator,
+                    style = DecorationStylePageNumber(label = label),
+                )
+            }
+
+        applyDecorations(decorations, "pageNumbers")
     }
 
     override fun onCreateOptionsMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -169,7 +225,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
             }
         })
 
-        menuSearchView.findViewById<ImageView>(R.id.search_close_btn).setOnClickListener {
+        menuSearchView.findViewById<ImageView>(androidx.appcompat.R.id.search_close_btn).setOnClickListener {
             menuSearchView.requestFocus()
             model.cancelSearch()
             menuSearchView.setQuery("", false)
@@ -196,7 +252,7 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
         childFragmentManager.commit {
             childFragmentManager.findFragmentByTag(SEARCH_FRAGMENT_TAG)?.let { remove(it) }
             add(R.id.fragment_reader_container, SearchFragment::class.java, Bundle(), SEARCH_FRAGMENT_TAG)
-            hide(navigatorFragment)
+            hide(navigator)
             addToBackStack(SEARCH_FRAGMENT_TAG)
         }
     }
@@ -207,11 +263,11 @@ class EpubReaderFragment : VisualReaderFragment(), EpubNavigatorFragment.Listene
     }
 }
 
+// Examples of HTML templates for custom Decoration Styles.
+
 /**
- * Example of an HTML template for a custom Decoration Style.
- *
- * This one will display a tinted "pen" icon in the page margin to show that a highlight has an
- * associated note.
+ * This Decorator Style will display a tinted "pen" icon in the page margin to show that a highlight
+ * has an associated note.
  *
  * Note that the icon is served from the app assets folder.
  */
@@ -240,6 +296,42 @@ private fun annotationMarkTemplate(@ColorInt defaultTint: Int = Color.YELLOW): H
                 border-radius: 50%;
                 background: url('$iconUrl') no-repeat center;
                 background-size: auto 50%;
+                opacity: 0.8;
+            }
+            """
+    )
+}
+
+/**
+ * This Decoration Style is used to display the page number labels in the margins, when a book
+ * provides a `page-list`. The label is stored in the [DecorationStylePageNumber] itself.
+ *
+ * See http://kb.daisy.org/publishing/docs/navigation/pagelist.html
+ */
+@OptIn(ExperimentalDecorator::class)
+private fun pageNumberTemplate(): HtmlDecorationTemplate {
+    val className = "testapp-page-number"
+    return HtmlDecorationTemplate(
+        layout = HtmlDecorationTemplate.Layout.BOUNDS,
+        width = HtmlDecorationTemplate.Width.PAGE,
+        element = { decoration ->
+            val style = decoration.style as? DecorationStylePageNumber
+
+            // Using `var(--RS__backgroundColor)` is a trick to use the same background color as
+            // the Readium theme. If we don't set it directly inline in the HTML, it might be
+            // forced transparent by Readium CSS.
+            """
+            <div><span class="$className" style="background-color: var(--RS__backgroundColor) !important">${style?.label}</span></div>"
+            """
+        },
+        stylesheet = """
+            .$className {
+                float: left;
+                margin-left: 8px;
+                padding: 0px 4px 0px 4px;
+                border: 1px solid;
+                border-radius: 20%;
+                box-shadow: rgba(50, 50, 93, 0.25) 0px 2px 5px -1px, rgba(0, 0, 0, 0.3) 0px 1px 3px -1px;
                 opacity: 0.8;
             }
             """

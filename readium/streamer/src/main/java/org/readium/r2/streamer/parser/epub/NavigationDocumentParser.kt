@@ -1,10 +1,7 @@
 /*
- * Module: r2-streamer-kotlin
- * Developers: Quentin Gliosca
- *
- * Copyright (c) 2018. Readium Foundation. All rights reserved.
- * Use of this source code is governed by a BSD-style license which is detailed in the
- * LICENSE file present in the project repository where this source code is maintained.
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
  */
 
 package org.readium.r2.streamer.parser.epub
@@ -23,8 +20,8 @@ internal object NavigationDocumentParser {
         val body = document.getFirst("body", Namespaces.XHTML) ?: return emptyMap()
         val navs = body.collect("nav", Namespaces.XHTML).mapNotNull { parseNavElement(it, filePath, prefixMap) }
         val navMap = navs.flatMap { nav ->
-                nav.first.map { type -> Pair(type, nav.second) }
-            }.toMap()
+            nav.first.map { type -> Pair(type, nav.second) }
+        }.toMap()
         return navMap.mapKeys {
             val suffix = it.key.removePrefix(Vocabularies.TYPE)
             if (suffix in listOf("toc", "page-list", "landmarks", "lot", "loi", "loa", "lov")) suffix else it.key

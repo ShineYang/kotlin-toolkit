@@ -7,18 +7,18 @@
  * LICENSE file present in the project repository where this source code is maintained.
  */
 
-@file:OptIn(InternalReadiumApi::class)
+@file:OptIn(org.readium.r2.shared.InternalReadiumApi::class)
 
 package org.readium.r2.shared.util.archive
 
+import java.io.File
+import java.util.zip.ZipEntry
+import java.util.zip.ZipFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.readium.r2.shared.InternalReadiumApi
 import org.readium.r2.shared.extensions.readFully
 import org.readium.r2.shared.util.io.CountingInputStream
-import java.io.File
-import java.util.zip.ZipEntry
-import java.util.zip.ZipFile
 
 @OptIn(InternalReadiumApi::class)
 internal class JavaZip(private val archive: ZipFile) : Archive {
@@ -80,7 +80,6 @@ internal class JavaZip(private val archive: ZipFile) : Archive {
                 stream?.close()
             }
         }
-
     }
 
     override suspend fun entries(): List<Archive.Entry> =

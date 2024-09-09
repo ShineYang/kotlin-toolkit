@@ -4,6 +4,8 @@
  * available in the top-level LICENSE file of the project.
  */
 
+@file:OptIn(InternalReadiumApi::class)
+
 package org.readium.r2.navigator
 
 import android.content.Context
@@ -24,6 +26,8 @@ import android.widget.ListPopupWindow
 import android.widget.PopupWindow
 import android.widget.TextView
 import androidx.annotation.RequiresApi
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -44,9 +48,6 @@ import org.readium.r2.shared.publication.ReadingProgression
 import org.readium.r2.shared.util.Href
 import org.readium.r2.shared.util.use
 import timber.log.Timber
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
-
 
 @OptIn(ExperimentalDecorator::class)
 open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(context, attrs) {
@@ -66,8 +67,8 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         fun onProgressionChanged()
         fun onHighlightActivated(id: String)
         fun onHighlightAnnotationMarkActivated(id: String)
-        fun goForward(animated: Boolean = false, completion: () -> Unit = {}): Boolean
-        fun goBackward(animated: Boolean = false, completion: () -> Unit = {}): Boolean
+        fun goForward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
+        fun goBackward(animated: Boolean = false, completion: () -> Unit = {}): Boolean = false
 
         /**
          * Returns the custom [ActionMode.Callback] to be used with the text selection menu.
@@ -76,24 +77,33 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
 
         @InternalReadiumApi
         fun javascriptInterfacesForResource(link: Link): Map<String, Any?> = emptyMap()
-
         @InternalReadiumApi
         fun shouldOverrideUrlLoading(webView: WebView, request: WebResourceRequest): Boolean = false
-
         @InternalReadiumApi
         fun shouldInterceptRequest(webView: WebView, request: WebResourceRequest): WebResourceResponse? = null
-
         @InternalReadiumApi
-        fun resourceAtUrl(url: String): Resource?
+        fun resourceAtUrl(url: String): Resource? = null
+
+        /**
+         * Requests to load the next resource in the reading order.
+         *
+         * @param jump Indicates whether it's a discontinuous jump from the current locator. Used
+         * for scroll mode.
+         */
+        @InternalReadiumApi
+        fun goToNextResource(jump: Boolean, animated: Boolean): Boolean = false
+        @InternalReadiumApi
+        fun goToPreviousResource(jump: Boolean, animated: Boolean): Boolean = false
     }
 
-    lateinit var listener: Listener
+    var listener: Listener? = null
     internal var preferences: SharedPreferences? = null
+    internal var useLegacySettings: Boolean = false
 
     var resourceUrl: String? = null
 
     internal val scrollModeFlow = MutableStateFlow(false)
-    
+
     /** Indicates that a user text selection is active. */
     internal var isSelecting = false
 
@@ -119,13 +129,12 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
             }
 
             progression
-
         } else {
             var x = scrollX.toDouble()
             val pageWidth = computeHorizontalScrollExtent()
             val contentWidth = computeHorizontalScrollRange()
 
-            val isRtl = (listener.readingProgression == ReadingProgression.RTL)
+            val isRtl = (listener?.readingProgression == ReadingProgression.RTL)
 
             // For RTL, we need to add the equivalent of one page to the x position, otherwise the
             // progression will be one page off.
@@ -163,42 +172,48 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
 
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, t, oldl, oldt)
-        listener.onProgressionChanged()
+        listener?.onProgressionChanged()
     }
 
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        addJavascriptInterface(this, "Android")
-    }
-
-    override fun onDetachedFromWindow() {
-        super.onDetachedFromWindow()
+    override fun destroy() {
         // Prevent the web view from leaking when detached
         // See https://github.com/readium/r2-navigator-kotlin/issues/52
         removeJavascriptInterface("Android")
+
+        super.destroy()
     }
 
     @android.webkit.JavascriptInterface
     open fun scrollRight(animated: Boolean = false) {
         uiScope.launch {
+            val listener = listener ?: return@launch
             listener.onScroll()
 
-            fun goRight() {
+            val isRtl = (listener.readingProgression == ReadingProgression.RTL)
+
+            fun goRight(jump: Boolean) {
                 if (listener.readingProgression == ReadingProgression.RTL) {
-                    listener.goBackward(animated = animated)
+                    listener.goBackward(animated = animated) // Legacy
+                    listener.goToPreviousResource(jump = jump, animated = animated)
                 } else {
-                    listener.goForward(animated = animated)
+                    listener.goForward(animated = animated) // Legacy
+                    listener.goToNextResource(jump = jump, animated = animated)
                 }
             }
 
-            if (scrollMode || !this@R2BasicWebView.canScrollHorizontally(1)) {
-                goRight()
-            } else {
-                runJavaScript("readium.scrollRight();") { success ->
-                    if (!success.toBoolean()) {
-                        goRight()
+            when {
+                scrollMode ->
+                    goRight(jump = true)
+
+                !this@R2BasicWebView.canScrollHorizontally(1) ->
+                    goRight(jump = false)
+
+                else ->
+                    runJavaScript("readium.scrollRight();") { success ->
+                        if (!success.toBoolean()) {
+                            goRight(jump = false)
+                        }
                     }
-                }
             }
         }
     }
@@ -206,24 +221,32 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     @android.webkit.JavascriptInterface
     open fun scrollLeft(animated: Boolean = false) {
         uiScope.launch {
+            val listener = listener ?: return@launch
             listener.onScroll()
 
-            fun goLeft() {
+            fun goLeft(jump: Boolean) {
                 if (listener.readingProgression == ReadingProgression.RTL) {
-                    listener.goForward(animated = animated)
+                    listener.goForward(animated = animated) // legacy
+                    listener.goToNextResource(jump = jump, animated = animated)
                 } else {
-                    listener.goBackward(animated = animated)
+                    listener.goBackward(animated = animated) // legacy
+                    listener.goToPreviousResource(jump = jump, animated = animated)
                 }
             }
 
-            if (scrollMode || !this@R2BasicWebView.canScrollHorizontally(-1)) {
-                goLeft()
-            } else {
-                runJavaScript("readium.scrollLeft();") { success ->
-                    if (!success.toBoolean()) {
-                        goLeft()
+            when {
+                scrollMode ->
+                    goLeft(jump = true)
+
+                !this@R2BasicWebView.canScrollHorizontally(-1) ->
+                    goLeft(jump = false)
+
+                else ->
+                    runJavaScript("readium.scrollLeft();") { success ->
+                        if (!success.toBoolean()) {
+                            goLeft(jump = false)
+                        }
                     }
-                }
             }
         }
     }
@@ -248,7 +271,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
             return false
         }
 
-        // FIXME: Let the app handle edge taps and footnotes.
+        // FIXME: Let the app handle footnotes.
 
         // We ignore taps on interactive element, unless it's an element we handle ourselves such as
         // pop-up footnotes.
@@ -261,7 +284,18 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         val thresholdRange = 0.0..(0.2 * clientWidth)
 
         // FIXME: Call listener.onTap if scrollLeft|Right fails
-        return runBlocking(uiScope.coroutineContext) { listener.onTap(event.point) }
+        return when {
+            useLegacySettings && thresholdRange.contains(event.point.x) -> {
+                scrollLeft(false)
+                true
+            }
+            useLegacySettings && thresholdRange.contains(clientWidth - event.point.x) -> {
+                scrollRight(false)
+                true
+            }
+            else ->
+                runBlocking(uiScope.coroutineContext) { listener?.onTap(event.point) ?: false }
+        }
     }
 
     /**
@@ -279,7 +313,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
             return false
         }
 
-        return listener.onDecorationActivated(id, group, rect, click.point)
+        return listener?.onDecorationActivated(id, group, rect, click.point) ?: false
     }
 
     /** Produced by gestures.js */
@@ -326,7 +360,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
 
         val aside = runBlocking {
             tryOrLog {
-                listener.resourceAtUrl(absoluteUrl)
+                listener?.resourceAtUrl(absoluteUrl)
                     ?.use { res ->
                         res.readAsString()
                             .map { Jsoup.parse(it) }
@@ -388,7 +422,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
             ?: return false
 
-        return runBlocking(uiScope.coroutineContext) { listener.onDragStart(event) }
+        return runBlocking(uiScope.coroutineContext) { listener?.onDragStart(event) ?: false }
     }
 
     @android.webkit.JavascriptInterface
@@ -396,7 +430,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
             ?: return false
 
-        return runBlocking(uiScope.coroutineContext) { listener.onDragMove(event) }
+        return runBlocking(uiScope.coroutineContext) { listener?.onDragMove(event) ?: false }
     }
 
     @android.webkit.JavascriptInterface
@@ -404,7 +438,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
         val event = DragEvent.fromJSON(eventJson)?.takeIf { it.isValid }
             ?: return false
 
-        return runBlocking(uiScope.coroutineContext) { listener.onDragEnd(event) }
+        return runBlocking(uiScope.coroutineContext) { listener?.onDragEnd(event) ?: false }
     }
 
     @android.webkit.JavascriptInterface
@@ -474,17 +508,16 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     @android.webkit.JavascriptInterface
     fun highlightActivated(id: String) {
         uiScope.launch {
-            listener.onHighlightActivated(id)
+            listener?.onHighlightActivated(id)
         }
     }
 
     @android.webkit.JavascriptInterface
     fun highlightAnnotationMarkActivated(id: String) {
         uiScope.launch {
-            listener.onHighlightAnnotationMarkActivated(id)
+            listener?.onHighlightAnnotationMarkActivated(id)
         }
     }
-
 
     fun Boolean.toInt() = if (this) 1 else 0
 
@@ -561,7 +594,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     fun runJavaScript(javascript: String, callback: ((String) -> Unit)? = null) {
         if (BuildConfig.DEBUG) {
             val filename = URLUtil.guessFileName(url, null, null)
-            Timber.d("runJavaScript in ${filename}: $javascript")
+            Timber.d("runJavaScript in $filename: $javascript")
         }
 
         this.evaluateJavascript(javascript) { result ->
@@ -578,7 +611,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     internal fun shouldOverrideUrlLoading(request: WebResourceRequest): Boolean {
         if (resourceUrl == request.url?.toString()) return false
 
-        return listener.shouldOverrideUrlLoading(this, request)
+        return listener?.shouldOverrideUrlLoading(this, request) ?: false
     }
 
     internal fun shouldInterceptRequest(webView: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -589,7 +622,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
             }
         }
 
-        return listener.shouldInterceptRequest(webView, request)
+        return listener?.shouldInterceptRequest(webView, request)
     }
 
     // Text selection ActionMode overrides
@@ -599,7 +632,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     // used by the web view.
 
     override fun startActionMode(callback: ActionMode.Callback?): ActionMode? {
-        val customCallback = listener.selectionActionModeCallback
+        val customCallback = listener?.selectionActionModeCallback
             ?: return super.startActionMode(callback)
 
         val parent = parent ?: return null
@@ -619,7 +652,7 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
 
     @RequiresApi(Build.VERSION_CODES.M)
     override fun startActionMode(callback: ActionMode.Callback?, type: Int): ActionMode? {
-        val customCallback = listener.selectionActionModeCallback
+        val customCallback = listener?.selectionActionModeCallback
             ?: return super.startActionMode(callback, type)
 
         val parent = parent ?: return null
@@ -628,7 +661,10 @@ open class R2BasicWebView(context: Context, attrs: AttributeSet) : WebView(conte
     }
 
     @RequiresApi(Build.VERSION_CODES.M)
-    inner class Callback2Wrapper(val callback: ActionMode.Callback, val callback2: ActionMode.Callback2?) : ActionMode.Callback by callback, ActionMode.Callback2() {
+    inner class Callback2Wrapper(
+        val callback: ActionMode.Callback,
+        val callback2: ActionMode.Callback2?
+    ) : ActionMode.Callback by callback, ActionMode.Callback2() {
         override fun onGetContentRect(mode: ActionMode?, view: View?, outRect: Rect?) =
             callback2?.onGetContentRect(mode, view, outRect)
                 ?: super.onGetContentRect(mode, view, outRect)

@@ -4,15 +4,90 @@ All notable changes to this project will be documented in this file. Take a look
 
 **Warning:** Features marked as *experimental* may change or be removed in a future release without notice. Use with caution.
 
-## [Unreleased]
+<!-- ## [Unreleased] -->
+
+## [2.4.3]
+
+* Bump to Kotlin 1.9.24.
+* Remove JCenter dependencies.
+
+
+## [2.4.1]
+
+### Added
+
+#### LCP
+
+* [#509](https://github.com/readium/kotlin-toolkit/issues/509) Support for the new 2.x LCP Profiles.
+
+
+## [2.4.0]
+
+* Readium is now distributed with [Maven Central](https://search.maven.org/search?q=g:org.readium.kotlin-toolkit). Take a look at [the migration guide](docs/migration-guide.md#240) to update your Gradle configuration.
+
+### Added
+
+#### Navigator
+
+* The EPUB `backgroundColor` preference is now available with fixed-layout publications.
+* New `EPUBNavigatorFragment.Configuration.useReadiumCssFontSize` option to revert to the 2.2.0 strategy for setting the font size of reflowable EPUB publications.
+    * The native font size strategy introduced in 2.3.0 uses the Android web view's [`WebSettings.textZoom`](https://developer.android.com/reference/android/webkit/WebSettings#setTextZoom(int)) property to adjust the font size. 2.2.0 was using Readium CSS's [`--USER__fontSize` variable](https://readium.org/readium-css/docs/CSS12-user_prefs.html#font-size).
+    * `WebSettings.textZoom` will work with more publications than `--USER__fontSize`, even the ones poorly authored. However the page width is not adjusted when changing the font size to keep the optimal line length.
+* Scroll mode: jumping between two EPUB resources with a horizontal swipe triggers the `Navigator.Listener.onJumpToLocator()` callback.
+    * This can be used to allow the user to go back to their previous location if they swiped across chapters by mistake.
+* Support for non-linear EPUB resources with an opt-in in reading apps (contributed by @chrfalch in [#375](https://github.com/readium/kotlin-toolkit/pull/375) and [#376](https://github.com/readium/kotlin-toolkit/pull/376)).
+     1. Override loading non-linear resources with `VisualNavigator.Listener.shouldJumpToLink()`.
+     2. Present a new `EpubNavigatorFragment` by providing a custom `readingOrder` with only this resource to the constructor.
+* Added dummy navigator fragment factories to prevent crashes caused by Android restoring the fragments after a process death.
+    * To use it, set the dummy fragment factory when you don't have access to the `Publication` instance. Then, either finish the `Activity` or pop the fragment from the UI before it resumes.
+        ```kotlin
+        override fun onCreate(savedInstanceState: Bundle?) {
+            val publication = model.publication ?: run {
+                childFragmentManager.fragmentFactory = EpubNavigatorFragment.createDummyFactory()
+                super.onCreate(savedInstanceState)
+
+                requireActivity().finish()
+                // or
+                navController?.popBackStack()
+
+                return
+            }
+
+            // Create the real navigator factory as usual...
+        }
+        ```
+
+#### Streamer
+
+* The EPUB content iterator now returns `audio` and `video` elements.
+
+### Changed
+
+#### Navigator
+
+* `EpubNavigatorFragment.firstVisibleElementLocator()` now returns the first *block* element that is visible on the screen, even if it starts on previous pages.
+    * This is used to make sure the user will not miss any context when restoring a TTS session in the middle of a resource.
+
+### Fixed
+
+#### Navigator
+
+* [#360](https://github.com/readium/kotlin-toolkit/issues/360) Fix EPUB JavaScript interface injection when rotating the screen on some devices.
+
+#### Streamer
+
+* Fixed issue with the TTS starting from the beginning of the chapter instead of the current position.
+
+
+## [2.3.0]
 
 ### Added
 
 #### Shared
 
 * Extract the raw content (text, images, etc.) of a publication. [Take a look at the user guide](docs/guides/content.md).
-* Add support for unsafe HTTP redirections with `HttpDefaultClient`.
-    * You will need to opt-in explicitly by implementing `HttpDefaultClient.Callback.onFollowUnsafeRedirect`.
+* Add support for unsafe HTTP redirections with `DefaultHttpClient`.
+    * You will need to opt-in explicitly by implementing `DefaultHttpClient.Callback.onFollowUnsafeRedirect`.
 
 #### Navigator
 
@@ -42,11 +117,12 @@ All notable changes to this project will be documented in this file. Take a look
         ```
 * New [PSPDFKit](readium/adapters/pspdfkit) adapter for rendering PDF documents. [Take a look at the user guide](docs/guides/pdf.md).
 * [A brand new text-to-speech implementation](docs/guides/tts.md).
-* [Support for custom fonts with the EPUB navigator](docs/guides/epub-custom-fonts.md).
-* New EPUB user settings, as part of [the revamped Settings API](docs/guides/navigator-settings.md):
+* [Support for custom fonts with the EPUB navigator](docs/guides/epub-fonts.md).
+* New EPUB user preferences, as part of [the revamped Settings API](docs/guides/navigator-preferences.md):
     * `backgroundColor` - Default page background color.
+    * `fontWeight` - Base text font weight.
     * `textColor` - Default page text color.
-    * `textNormalization` - Normalize font style, weight and variants using a specific strategy (force bold, accessibility).
+    * `textNormalization` - Normalize font style, weight and variants, which improves accessibility.
     * `imageFilter` - Filter applied to images in dark theme (darken, invert colors)
     * `language` - Language of the publication content.
     * `readingProgression` - Direction of the reading progression across resources, e.g. RTL.
@@ -55,6 +131,8 @@ All notable changes to this project will be documented in this file. Take a look
     * `paragraphSpacing` - Vertical margins for paragraphs.
     * `hyphens` - Enable hyphenation.
     * `ligatures` - Enable ligatures in Arabic.
+* Fixed scroll inertia when scrolling an EPUB.
+* EPUB decorations can now be attached to `Locator` objects containing only an HTML ID (`locations.fragments`) or a CSS selector (`locations.cssSelector`).
 
 ### Changed
 
@@ -65,7 +143,15 @@ All notable changes to this project will be documented in this file. Take a look
 
 #### Navigator
 
-* The EPUB user settings API got revamped. [Take a look at the user guide](docs/guides/navigator-settings.md) and the [migration guide](docs/migration-guide.md#230) to learn how to use it.
+* The EPUB and PDF user preferences API got revamped. [Take a look at the user guide](docs/guides/navigator-preferences.md) and the [migration guide](docs/migration-guide.md#230) to learn how to use it.
+* `Decoration.extras` is now a `Map<String, Any>` instead of `Bundle`. You will need to update your app if you were storing custom data in `extras`, for example:
+    ```kotlin
+    val decoration = Decoration(...,
+        extras = mapOf("id" to id)
+    )
+
+    val id = decoration.extras["id"] as? Long
+    ```
 
 ### Deprecated
 
@@ -86,6 +172,18 @@ All notable changes to this project will be documented in this file. Take a look
 * Prevent refreshing an already loaded EPUB resource when jumping to a `Locator` in it.
 * [#86](https://github.com/readium/kotlin-toolkit/issues/86) Fixed page swipes while selecting text in an EPUB resource.
 * The `onTap` event is not sent when an EPUB text selection is active anymore, to prevent showing the app bar while dismissing a selection.
+* [#76](https://github.com/readium/kotlin-toolkit/issues/76) Fixed EPUB fixed layout font size affected by device settings.
+* `Decoration` objects are now properly comparable with `equals()`.
+* [#292](https://github.com/readium/kotlin-toolkit/issues/292) Fix broken pagination when an EPUB uses `overflow-x: hidden`.
+
+
+## [2.2.1]
+
+### Fixed
+
+#### Streamer
+
+* [#286](https://github.com/readium/kotlin-toolkit/issues/286) Fixed broken dependency to NanoHTTPD.
 
 
 ## [2.2.0]
@@ -612,4 +710,9 @@ progression. Now if no reading progression is set, the `effectiveReadingProgress
 [2.1.0]: https://github.com/readium/kotlin-toolkit/compare/2.0.0...2.1.0
 [2.1.1]: https://github.com/readium/kotlin-toolkit/compare/2.1.0...2.1.1
 [2.2.0]: https://github.com/readium/kotlin-toolkit/compare/2.1.1...2.2.0
+[2.2.1]: https://github.com/readium/kotlin-toolkit/compare/2.2.0...2.2.1
+[2.3.0]: https://github.com/readium/kotlin-toolkit/compare/2.2.1...2.3.0
+[2.4.0]: https://github.com/readium/kotlin-toolkit/compare/2.3.0...2.4.0
+[2.4.1]: https://github.com/readium/kotlin-toolkit/compare/2.4.0...2.4.1
+[2.4.3]: https://github.com/readium/kotlin-toolkit/compare/2.4.1...2.4.3
 

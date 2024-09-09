@@ -1,8 +1,8 @@
 package org.readium.r2.lcp.service
 
+import java.lang.reflect.InvocationTargetException
 import org.readium.r2.lcp.LcpException
 import org.readium.r2.shared.extensions.tryOr
-import java.lang.reflect.InvocationTargetException
 
 internal object LcpClient {
 
@@ -30,8 +30,8 @@ internal object LcpClient {
                 .newInstance(hashedPassphrase, encryptedContentKey, token, profile)
     }
 
-    private val instance: Any by lazy  {
-        klass.newInstance()
+    private val instance: Any by lazy {
+        klass.getDeclaredConstructor().newInstance()
     }
 
     private val klass: Class<*> by lazy {
@@ -59,7 +59,7 @@ internal object LcpClient {
             klass
                 .getMethod("decrypt", Class.forName("org.readium.lcp.sdk.DRMContext"), ByteArray::class.java)
                 .invoke(instance, context.toDRMContext(), encryptedData)
-                    as ByteArray
+                as ByteArray
         } catch (e: InvocationTargetException) {
             throw mapException(e.targetException)
         }

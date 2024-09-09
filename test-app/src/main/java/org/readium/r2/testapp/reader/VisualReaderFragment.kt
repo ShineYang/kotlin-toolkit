@@ -35,31 +35,34 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.parcelize.Parcelize
 import org.readium.r2.navigator.*
+import org.readium.r2.navigator.media3.tts.android.AndroidTtsEngine
 import org.readium.r2.navigator.util.BaseActionModeCallback
 import org.readium.r2.navigator.util.EdgeTapNavigation
+import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.Language
 import org.readium.r2.testapp.R
 import org.readium.r2.testapp.databinding.FragmentReaderBinding
 import org.readium.r2.testapp.domain.model.Highlight
+import org.readium.r2.testapp.reader.preferences.UserPreferencesBottomSheetDialogFragment
 import org.readium.r2.testapp.reader.tts.TtsControls
 import org.readium.r2.testapp.reader.tts.TtsViewModel
 import org.readium.r2.testapp.utils.*
 import org.readium.r2.testapp.utils.extensions.confirmDialog
 import org.readium.r2.testapp.utils.extensions.throttleLatest
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 /*
  * Base reader fragment class
  *
  * Provides common menu items and saves last location on stop.
  */
-@OptIn(ExperimentalDecorator::class)
+@OptIn(ExperimentalDecorator::class, ExperimentalReadiumApi::class)
 abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.Listener {
 
     protected var binding: FragmentReaderBinding by viewLifecycle()
@@ -79,6 +82,13 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
      * When true, the user won't be able to interact with the navigator.
      */
     private var disableTouches by mutableStateOf(false)
+
+    /**
+     * When true, the fragment won't save progression.
+     * This is useful in the case where the TTS is on and a service is saving progression
+     * in background.
+     */
+    private var preventProgressionSaving: Boolean = false
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -123,6 +133,10 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
         model.tts?.let { tts ->
             TtsControls(
                 model = tts,
+                onPreferences = {
+                    UserPreferencesBottomSheetDialogFragment(tts.preferencesModel, "TTS Settings")
+                        .show(childFragmentManager, "TtsSettings")
+                },
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .padding(8.dp)
@@ -134,7 +148,11 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 navigator.currentLocator
-                    .onEach { model.saveProgression(it) }
+                    .onEach {
+                        if (!preventProgressionSaving) {
+                            model.saveProgression(it)
+                        }
+                    }
                     .launchIn(this)
 
                 setupHighlights(this)
@@ -179,19 +197,9 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 }
                 .launchIn(scope)
 
-            // Navigate to the currently spoken utterance.
-            state.map { it.playingUtterance }
-                .filterNotNull()
-                // Prevent jumping to many locations when the user skips repeatedly forward/backward.
-                .throttleLatest(500.milliseconds)
-                .onEach { locator ->
-                    navigator.go(locator, animated = false)
-                }
-                .launchIn(scope)
-
             // Navigate to the currently spoken word.
             // This will automatically turn pages when needed.
-            state.map { it.playingWordRange }
+            position
                 .filterNotNull()
                 // Improve performances by throttling the moves to maximum one per second.
                 .throttleLatest(1.seconds)
@@ -202,8 +210,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
             // Prevent interacting with the publication (including page turns) while the TTS is
             // playing.
-            state.map { it.isPlaying }
-                .distinctUntilChanged()
+            isPlaying
                 .onEach { isPlaying ->
                     disableTouches = isPlaying
                 }
@@ -211,8 +218,7 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
             // Highlight the currently spoken utterance.
             (navigator as? DecorableNavigator)?.let { navigator ->
-                state.map { it.playingUtterance }
-                    .distinctUntilChanged()
+                highlight
                     .onEach { locator ->
                         val decoration = locator?.let {
                             Decoration(
@@ -225,6 +231,12 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                     }
                     .launchIn(scope)
             }
+
+            showControls
+                .onEach { showControls ->
+                    preventProgressionSaving = showControls
+                }
+                .launchIn(scope)
         }
     }
 
@@ -240,19 +252,18 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 getString(R.string.tts_error_language_support_incomplete, language.locale.displayLanguage)
             )
         ) {
-            tts.requestInstallVoice(activity)
+            AndroidTtsEngine.requestInstallVoice(activity)
         }
+    }
+
+    override fun go(locator: Locator, animated: Boolean) {
+        model.tts?.stop()
+        super.go(locator, animated)
     }
 
     override fun onDestroyView() {
         (navigator as? DecorableNavigator)?.removeDecorationListener(decorationListener)
         super.onDestroyView()
-    }
-
-    override fun onStop() {
-        super.onStop()
-
-        model.tts?.pause()
     }
 
     override fun onHiddenChanged(hidden: Boolean) {
@@ -281,9 +292,9 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
     inner class DecorationListener : DecorableNavigator.Listener {
         override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
             val decoration = event.decoration
-            // We stored the highlight's database ID in the `Decoration.extras` bundle, for
-            // easy retrieval. You can store arbitrary information in the bundle.
-            val id = decoration.extras.getLong("id")
+            // We stored the highlight's database ID in the `Decoration.extras` map, for
+            // easy retrieval. You can store arbitrary information in the map.
+            val id = (decoration.extras["id"] as Long)
                 .takeIf { it > 0 } ?: return false
 
             // This listener will be called when tapping on any of the decorations in the
@@ -295,7 +306,8 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
             } else {
                 event.rect?.let { rect ->
                     val isUnderline = (decoration.style is Decoration.Style.Underline)
-                    showHighlightPopup(rect,
+                    showHighlightPopup(
+                        rect,
                         style = if (isUnderline) Highlight.Style.UNDERLINE
                         else Highlight.Style.HIGHLIGHT,
                         highlightId = id
@@ -305,7 +317,6 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 
             return true
         }
-
     }
 
     // Highlights
@@ -348,89 +359,101 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
         }
     }
 
-    private fun showHighlightPopupWithStyle(style: Highlight.Style) = viewLifecycleOwner.lifecycleScope.launchWhenResumed {
-        // Get the rect of the current selection to know where to position the highlight
-        // popup.
-        (navigator as? SelectableNavigator)?.currentSelection()?.rect?.let { selectionRect ->
-            showHighlightPopup(selectionRect, style)
-        }
-    }
-
-    private fun showHighlightPopup(rect: RectF, style: Highlight.Style, highlightId: Long? = null)
-        = viewLifecycleOwner.lifecycleScope.launchWhenResumed {
-            if (popupWindow?.isShowing == true) return@launchWhenResumed
-
-            model.activeHighlightId.value = highlightId
-
-            val isReverse = (rect.top > 60)
-            val popupView = layoutInflater.inflate(
-                if (isReverse) R.layout.view_action_mode_reverse else R.layout.view_action_mode,
-                null,
-                false
-            )
-            popupView.measure(
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
-                View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
-            )
-
-            popupWindow = PopupWindow(
-                popupView,
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                isFocusable = true
-                setOnDismissListener {
-                    model.activeHighlightId.value = null
-                }
+    private fun showHighlightPopupWithStyle(style: Highlight.Style) =
+        viewLifecycleOwner.lifecycleScope.launch {
+            // Get the rect of the current selection to know where to position the highlight
+            // popup.
+            (navigator as? SelectableNavigator)?.currentSelection()?.rect?.let { selectionRect ->
+                showHighlightPopup(selectionRect, style)
             }
+        }
 
-            val x = rect.left
-            val y = if (isReverse) rect.top else rect.bottom + rect.height()
+    private fun showHighlightPopup(rect: RectF, style: Highlight.Style, highlightId: Long? = null) =
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                if (popupWindow?.isShowing == true) return@repeatOnLifecycle
 
-            popupWindow?.showAtLocation(popupView, Gravity.NO_GRAVITY, x.toInt(), y.toInt())
+                model.activeHighlightId.value = highlightId
 
-            val highlight = highlightId?.let { model.highlightById(it) }
-            popupView.run {
-                findViewById<View>(R.id.notch).run {
-                    setX(rect.left * 2)
+                val isReverse = (rect.top > 60)
+                val popupView = layoutInflater.inflate(
+                    if (isReverse) R.layout.view_action_mode_reverse else R.layout.view_action_mode,
+                    null,
+                    false
+                )
+                popupView.measure(
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+                    View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+                )
+
+                popupWindow = PopupWindow(
+                    popupView,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    isFocusable = true
+                    setOnDismissListener {
+                        model.activeHighlightId.value = null
+                    }
                 }
 
-                fun selectTint(view: View) {
-                    val tint = highlightTints[view.id] ?: return
-                    selectHighlightTint(highlightId, style, tint)
-                }
+                val x = rect.left
+                val y = if (isReverse) rect.top else rect.bottom + rect.height()
 
-                findViewById<View>(R.id.red).setOnClickListener(::selectTint)
-                findViewById<View>(R.id.green).setOnClickListener(::selectTint)
-                findViewById<View>(R.id.blue).setOnClickListener(::selectTint)
-                findViewById<View>(R.id.yellow).setOnClickListener(::selectTint)
-                findViewById<View>(R.id.purple).setOnClickListener(::selectTint)
+                popupWindow?.showAtLocation(popupView, Gravity.NO_GRAVITY, x.toInt(), y.toInt())
 
-                findViewById<View>(R.id.annotation).setOnClickListener {
-                    popupWindow?.dismiss()
-                    showAnnotationPopup(highlightId)
-                }
-                findViewById<View>(R.id.del).run {
-                    visibility = if (highlight != null) View.VISIBLE else View.GONE
-                    setOnClickListener {
-                        highlightId?.let {
-                            model.deleteHighlight(highlightId)
-                        }
+                val highlight = highlightId?.let { model.highlightById(it) }
+                popupView.run {
+                    findViewById<View>(R.id.notch).run {
+                        setX(rect.left * 2)
+                    }
+
+                    fun selectTint(view: View) {
+                        val tint = highlightTints[view.id] ?: return
+                        selectHighlightTint(highlightId, style, tint)
+                    }
+
+                    findViewById<View>(R.id.red).setOnClickListener(::selectTint)
+                    findViewById<View>(R.id.green).setOnClickListener(::selectTint)
+                    findViewById<View>(R.id.blue).setOnClickListener(::selectTint)
+                    findViewById<View>(R.id.yellow).setOnClickListener(::selectTint)
+                    findViewById<View>(R.id.purple).setOnClickListener(::selectTint)
+
+                    findViewById<View>(R.id.annotation).setOnClickListener {
                         popupWindow?.dismiss()
-                        mode?.finish()
+                        showAnnotationPopup(highlightId)
+                    }
+                    findViewById<View>(R.id.del).run {
+                        visibility = if (highlight != null) View.VISIBLE else View.GONE
+                        setOnClickListener {
+                            highlightId?.let {
+                                model.deleteHighlight(highlightId)
+                            }
+                            popupWindow?.dismiss()
+                            mode?.finish()
+                        }
                     }
                 }
             }
         }
 
-        private fun selectHighlightTint(highlightId: Long? = null, style: Highlight.Style, @ColorInt tint: Int)
-            = viewLifecycleOwner.lifecycleScope.launchWhenResumed {
+    private fun selectHighlightTint(
+        highlightId: Long? = null,
+        style: Highlight.Style,
+        @ColorInt tint: Int
+    ) =
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 if (highlightId != null) {
                     model.updateHighlightStyle(highlightId, style, tint)
                 } else {
                     (navigator as? SelectableNavigator)?.let { navigator ->
                         navigator.currentSelection()?.let { selection ->
-                            model.addHighlight(locator = selection.locator, style = style, tint = tint)
+                            model.addHighlight(
+                                locator = selection.locator,
+                                style = style,
+                                tint = tint
+                            )
                         }
                         navigator.clearSelection()
                     }
@@ -439,55 +462,70 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
                 popupWindow?.dismiss()
                 mode?.finish()
             }
-
-    private fun showAnnotationPopup(highlightId: Long? = null) = viewLifecycleOwner.lifecycleScope.launchWhenResumed {
-        val activity = activity ?: return@launchWhenResumed
-        val view = layoutInflater.inflate(R.layout.popup_note, null, false)
-        val note = view.findViewById<EditText>(R.id.note)
-        val alert = AlertDialog.Builder(activity)
-            .setView(view)
-            .create()
-
-        fun dismiss() {
-            alert.dismiss()
-            mode?.finish()
-            (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-                .hideSoftInputFromWindow(note.applicationWindowToken, InputMethodManager.HIDE_NOT_ALWAYS)
         }
 
-        with(view) {
-            val highlight = highlightId?.let { model.highlightById(it) }
-            if (highlight != null) {
-                note.setText(highlight.annotation)
-                findViewById<View>(R.id.sidemark).setBackgroundColor(highlight.tint)
-                findViewById<TextView>(R.id.select_text).text = highlight.locator.text.highlight
+    private fun showAnnotationPopup(highlightId: Long? = null) =
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                val activity = activity ?: return@repeatOnLifecycle
+                val view = layoutInflater.inflate(R.layout.popup_note, null, false)
+                val note = view.findViewById<EditText>(R.id.note)
+                val alert = AlertDialog.Builder(activity)
+                    .setView(view)
+                    .create()
 
-                findViewById<TextView>(R.id.positive).setOnClickListener {
-                    val text = note.text.toString()
-                    model.updateHighlightAnnotation(highlight.id, annotation = text)
-                    dismiss()
+                fun dismiss() {
+                    alert.dismiss()
+                    mode?.finish()
+                    (activity.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
+                        .hideSoftInputFromWindow(
+                            note.applicationWindowToken,
+                            InputMethodManager.HIDE_NOT_ALWAYS
+                        )
                 }
-            } else {
-                val tint = highlightTints.values.random()
-                findViewById<View>(R.id.sidemark).setBackgroundColor(tint)
-                val navigator = navigator as? SelectableNavigator ?: return@launchWhenResumed
-                val selection = navigator.currentSelection() ?: return@launchWhenResumed
-                navigator.clearSelection()
-                findViewById<TextView>(R.id.select_text).text = selection.locator.text.highlight
 
-                findViewById<TextView>(R.id.positive).setOnClickListener {
-                    model.addHighlight(locator = selection.locator, style = Highlight.Style.HIGHLIGHT, tint = tint, annotation = note.text.toString())
-                    dismiss()
+                with(view) {
+                    val highlight = highlightId?.let { model.highlightById(it) }
+                    if (highlight != null) {
+                        note.setText(highlight.annotation)
+                        findViewById<View>(R.id.sidemark).setBackgroundColor(highlight.tint)
+                        findViewById<TextView>(R.id.select_text).text =
+                            highlight.locator.text.highlight
+
+                        findViewById<TextView>(R.id.positive).setOnClickListener {
+                            val text = note.text.toString()
+                            model.updateHighlightAnnotation(highlight.id, annotation = text)
+                            dismiss()
+                        }
+                    } else {
+                        val tint = highlightTints.values.random()
+                        findViewById<View>(R.id.sidemark).setBackgroundColor(tint)
+                        val navigator =
+                            navigator as? SelectableNavigator ?: return@repeatOnLifecycle
+                        val selection = navigator.currentSelection() ?: return@repeatOnLifecycle
+                        navigator.clearSelection()
+                        findViewById<TextView>(R.id.select_text).text =
+                            selection.locator.text.highlight
+
+                        findViewById<TextView>(R.id.positive).setOnClickListener {
+                            model.addHighlight(
+                                locator = selection.locator,
+                                style = Highlight.Style.HIGHLIGHT,
+                                tint = tint,
+                                annotation = note.text.toString()
+                            )
+                            dismiss()
+                        }
+                    }
+
+                    findViewById<TextView>(R.id.negative).setOnClickListener {
+                        dismiss()
+                    }
                 }
-            }
 
-            findViewById<TextView>(R.id.negative).setOnClickListener {
-                dismiss()
+                alert.show()
             }
         }
-
-        alert.show()
-    }
 
     fun updateSystemUiVisibility() {
         if (navigatorFragment.isHidden)
@@ -509,7 +547,11 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
     // VisualNavigator.Listener
 
     override fun onTap(point: PointF): Boolean {
+        val navigated = edgeTapNavigation.onTap(point, requireView())
+
+        if (!navigated) {
             requireActivity().toggleSystemUi()
+        }
         return true
     }
 
@@ -518,7 +560,6 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
             navigator = navigator as VisualNavigator
         )
     }
-
 }
 
 /**
@@ -529,3 +570,14 @@ abstract class VisualReaderFragment : BaseReaderFragment(), VisualNavigator.List
 @Parcelize
 @OptIn(ExperimentalDecorator::class)
 data class DecorationStyleAnnotationMark(@ColorInt val tint: Int) : Decoration.Style
+
+/**
+ * Decoration Style for a page number label.
+ *
+ * This is an example of a custom Decoration Style declaration.
+ *
+ * @param label Page number label as declared in the `page-list` link object.
+ */
+@Parcelize
+@OptIn(ExperimentalDecorator::class)
+data class DecorationStylePageNumber(val label: String) : Decoration.Style

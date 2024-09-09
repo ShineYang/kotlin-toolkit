@@ -1,16 +1,14 @@
 /*
- * Module: r2-streamer-kotlin
- * Developers: Aferdita Muriqi, Clément Baumann, Quentin Gliosca
- *
- * Copyright (c) 2018. Readium Foundation. All rights reserved.
- * Use of this source code is governed by a BSD-style license which is detailed in the
- * LICENSE file present in the project repository where this source code is maintained.
+ * Copyright 2022 Readium Foundation. All rights reserved.
+ * Use of this source code is governed by the BSD-style license
+ * available in the top-level LICENSE file of the project.
  */
 
 @file:Suppress("DEPRECATION")
 
 package org.readium.r2.streamer.parser.epub
 
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.ReadiumCSSName
@@ -39,7 +37,6 @@ import org.readium.r2.streamer.extensions.fromArchiveOrDirectory
 import org.readium.r2.streamer.extensions.readAsXmlOrNull
 import org.readium.r2.streamer.fetcher.LcpDecryptor
 import org.readium.r2.streamer.parser.PubBox
-import java.io.File
 
 @Suppress("DEPRECATION")
 object EPUBConstant {
@@ -104,15 +101,15 @@ class EpubParser(
         val opfPath = getRootFilePath(fetcher).addPrefix("/")
         val opfXmlDocument = fetcher.get(opfPath).readAsXml().getOrThrow()
         val packageDocument = PackageDocument.parse(opfXmlDocument, opfPath)
-            ?:  throw Exception("Invalid OPF file.")
+            ?: throw Exception("Invalid OPF file.")
 
-        val manifest = PublicationFactory(
-                fallbackTitle = fallbackTitle,
-                packageDocument = packageDocument,
-                navigationData = parseNavigationData(packageDocument, fetcher),
-                encryptionData = parseEncryptionData(fetcher),
-                displayOptions = parseDisplayOptions(fetcher)
-            ).create()
+        val manifest = ManifestAdapter(
+            fallbackTitle = fallbackTitle,
+            packageDocument = packageDocument,
+            navigationData = parseNavigationData(packageDocument, fetcher),
+            encryptionData = parseEncryptionData(fetcher),
+            displayOptions = parseDisplayOptions(fetcher)
+        ).adapt()
 
         @Suppress("NAME_SHADOWING")
         var fetcher = fetcher
@@ -126,9 +123,11 @@ class EpubParser(
             servicesBuilder = Publication.ServicesBuilder(
                 positions = EpubPositionsService.createFactory(reflowablePositionsStrategy),
                 search = StringSearchService.createDefaultFactory(),
-                content = DefaultContentService.createFactory(listOf(
-                    HtmlResourceContentIterator.createFactory()
-                )),
+                content = DefaultContentService.createFactory(
+                    listOf(
+                        HtmlResourceContentIterator.createFactory()
+                    )
+                ),
             )
         )
     }
@@ -223,7 +222,7 @@ class EpubParser(
     private suspend fun parseDisplayOptions(fetcher: Fetcher): Map<String, String> {
         val displayOptionsXml =
             fetcher.readAsXmlOrNull("/META-INF/com.apple.ibooks.display-options.xml")
-            ?: fetcher.readAsXmlOrNull("/META-INF/com.kobobooks.display-options.xml")
+                ?: fetcher.readAsXmlOrNull("/META-INF/com.kobobooks.display-options.xml")
 
         return displayOptionsXml?.getFirst("platform", "")
             ?.get("option", "")
@@ -240,7 +239,6 @@ class EpubParser(
     fun fillEncryption(container: Container, publication: Publication, drm: DRM?): Pair<Container, Publication> {
         return Pair(container, publication)
     }
-
 }
 
 @Suppress("DEPRECATION")

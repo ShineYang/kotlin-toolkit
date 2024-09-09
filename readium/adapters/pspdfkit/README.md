@@ -10,9 +10,9 @@ Follow the same setup instructions as the core Readium toolkit, then add this ne
 
 ```groovy
 dependencies {
-    implementation "com.github.readium.kotlin-toolkit:readium-adapter-pspdfkit:$readium_version"
+    implementation "org.readium.kotlin-toolkit:readium-adapter-pspdfkit:$readium_version"
     // Or, if you need only the parser but not the navigator:
-    implementation "com.github.readium.kotlin-toolkit:readium-adapter-pspdfkit-document:$readium_version"
+    implementation "org.readium.kotlin-toolkit:readium-adapter-pspdfkit-document:$readium_version"
 }
 ```
 
@@ -42,18 +42,6 @@ val publication = streamer.open(FileAsset(pdfFile)).getOrThrow()
 
 ## Render a PDF with Readium's `PdfNavigatorFragment`.
 
-To render the PDF using Readium's `PdfNavigatorFragment`, use:
+To render the PDF using Readium's `PdfNavigatorFragment`, instantiate `PsPdfKitEngineProvider` and use the `PdfNavigatorFactory` to get a `FragmentFactory` and a `PreferencesEditor`.
 
-```kotlin
-override fun onCreate(savedInstanceState: Bundle?) {
-    childFragmentManager.fragmentFactory =
-        PdfNavigatorFragment.createFactory(
-            publication = publication,
-            ...
-            documentFragmentFactory = PsPdfKitDocumentFragment.createFactory(requireContext())
-        )
-
-    super.onCreate(savedInstanceState)
-}
-```
 

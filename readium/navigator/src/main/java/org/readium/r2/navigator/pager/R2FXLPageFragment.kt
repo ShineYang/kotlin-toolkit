@@ -19,11 +19,13 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.webkit.WebViewClientCompat
 import org.readium.r2.navigator.R2BasicWebView
 import org.readium.r2.navigator.databinding.FragmentFxllayoutDoubleBinding
 import org.readium.r2.navigator.databinding.FragmentFxllayoutSingleBinding
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.EpubNavigatorViewModel
 import org.readium.r2.navigator.epub.fxl.R2FXLLayout
 import org.readium.r2.navigator.epub.fxl.R2FXLOnDoubleTapListener
 
@@ -35,7 +37,7 @@ class R2FXLPageFragment : Fragment() {
     private val secondResourceUrl: String?
         get() = requireArguments().getString("secondUrl")
 
-    private var webViews = mutableListOf<WebView>()
+    private var webViews = mutableListOf<R2BasicWebView>()
 
     private var _doubleBinding: FragmentFxllayoutDoubleBinding? = null
     private val doubleBinding get() = _doubleBinding!!
@@ -46,8 +48,14 @@ class R2FXLPageFragment : Fragment() {
     private val navigator: EpubNavigatorFragment?
         get() = parentFragment as? EpubNavigatorFragment
 
+    private val viewModel: EpubNavigatorViewModel by viewModels(ownerProducer = { requireParentFragment() })
+
     @SuppressLint("SetJavaScriptEnabled")
-    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View? {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?
+    ): View? {
 
         secondResourceUrl?.let {
             _doubleBinding = FragmentFxllayoutDoubleBinding.inflate(inflater, container, false)
@@ -66,12 +74,12 @@ class R2FXLPageFragment : Fragment() {
             r2FXLLayout.addOnDoubleTapListener(R2FXLOnDoubleTapListener(true))
             r2FXLLayout.addOnTapListener(object : R2FXLLayout.OnTapListener {
                 override fun onTap(view: R2FXLLayout, info: R2FXLLayout.TapInfo): Boolean {
-                    return left.listener.onTap(PointF(info.x, info.y))
+                    return left.listener?.onTap(PointF(info.x, info.y)) ?: false
                 }
             })
 
             return view
-        }?:run {
+        } ?: run {
             _singleBinding = FragmentFxllayoutSingleBinding.inflate(inflater, container, false)
             val view: View = singleBinding.root
             view.setPadding(0, 0, 0, 0)
@@ -86,7 +94,7 @@ class R2FXLPageFragment : Fragment() {
             r2FXLLayout.addOnDoubleTapListener(R2FXLOnDoubleTapListener(true))
             r2FXLLayout.addOnTapListener(object : R2FXLLayout.OnTapListener {
                 override fun onTap(view: R2FXLLayout, info: R2FXLLayout.TapInfo): Boolean {
-                    return webview.listener.onTap(PointF(info.x, info.y))
+                    return webview.listener?.onTap(PointF(info.x, info.y)) ?: false
                 }
             })
 
@@ -107,9 +115,13 @@ class R2FXLPageFragment : Fragment() {
     }
 
     override fun onDestroyView() {
-        super.onDestroyView()
+        for (webView in webViews) {
+            webView.listener = null
+        }
         _singleBinding = null
         _doubleBinding = null
+
+        super.onDestroyView()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -119,6 +131,7 @@ class R2FXLPageFragment : Fragment() {
             webView.listener = it.webViewListener
         }
 
+        webView.useLegacySettings = viewModel.useLegacySettings
         webView.settings.javaScriptEnabled = true
         webView.isVerticalScrollBarEnabled = false
         webView.isHorizontalScrollBarEnabled = false
@@ -127,12 +140,15 @@ class R2FXLPageFragment : Fragment() {
         webView.settings.setSupportZoom(true)
         webView.settings.builtInZoomControls = true
         webView.settings.displayZoomControls = false
+        // If we don't explicitly override the [textZoom], it will be set by Android's
+        // accessibility font size system setting which breaks the layout of some fixed layouts.
+        // See https://github.com/readium/kotlin-toolkit/issues/76
+        webView.settings.textZoom = 100
 
         webView.setInitialScale(1)
 
         webView.setPadding(0, 0, 0, 0)
         webView.addJavascriptInterface(webView, "Android")
-
 
         webView.webViewClient = object : WebViewClientCompat() {
 
@@ -141,7 +157,6 @@ class R2FXLPageFragment : Fragment() {
 
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 (webView as? R2BasicWebView)?.shouldInterceptRequest(view, request)
-
         }
         webView.isHapticFeedbackEnabled = false
         webView.isLongClickable = false
@@ -161,9 +176,5 @@ class R2FXLPageFragment : Fragment() {
                     putString("secondUrl", url2)
                 }
             }
-
     }
-
 }
-
-

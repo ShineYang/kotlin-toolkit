@@ -50,15 +50,17 @@ private fun wrapJSON(value: Any?): Any? = when (value) {
     is JSONable -> value.toJSON()
         .takeIf { it.length() > 0 }
 
-    is Map<*, *> -> value
-        .takeIf { it.isNotEmpty() }
-        ?.mapValues { wrapJSON(it.value) }
-        ?.let { JSONObject(it) }
+    is Map<*, *> ->
+        value
+            .takeIf { it.isNotEmpty() }
+            ?.mapValues { wrapJSON(it.value) }
+            ?.let { JSONObject(it) }
 
-    is List<*> -> value
-        .takeIf { it.isNotEmpty() }
-        ?.mapNotNull { wrapJSON(it) }
-        ?.let { JSONArray(it) }
+    is List<*> ->
+        value
+            .takeIf { it.isNotEmpty() }
+            ?.mapNotNull { wrapJSON(it) }
+            ?.let { JSONArray(it) }
 
     else -> value
 }
@@ -168,23 +170,14 @@ fun JSONObject.optPositiveDouble(name: String, fallback: Double = -1.0, remove: 
 }
 
 /**
- * Returns the value mapped by [name] if it exists, coercing it if necessary, or `null` if no such
- * mapping exists.
+ * Returns the value mapped by [name] if it exists, or `null` if no such
+ * mapping exists, it is not a string or it is empty.
  * If [remove] is true, then the mapping will be removed from the [JSONObject].
  */
 fun JSONObject.optNullableString(name: String, remove: Boolean = false): String? {
-    // optString() returns "null" if the key exists but contains the `null` value.
-    // https://stackoverflow.com/questions/18226288/json-jsonobject-optstring-returns-string-null
-    if (isNull(name)) {
-        return null
-    }
-
-    val string = optString(name)
-    val value = if (string != "") string else null
-    if (remove) {
-        this.remove(name)
-    }
-    return value
+    val value = if (remove) this.remove(name) else this.opt(name)
+    val string = value as? String
+    return string?.takeUnless(String::isEmpty)
 }
 
 /**
@@ -301,6 +294,21 @@ fun <T> JSONArray.mapNotNull(transform: (Any) -> T?): List<T> {
 }
 
 /**
+ * Returns a list containing only the elements of the original [JSONArray] that are instances of [klass].
+ */
+internal fun <T> JSONArray.filterIsInstance(klass: Class<T>): List<T> {
+    val result = mutableListOf<T>()
+    for (i in 0 until length()) {
+        val e = get(i)
+        if (klass.isInstance(e)) {
+            @Suppress("UNCHECKED_CAST")
+            result.add(e as T)
+        }
+    }
+    return result
+}
+
+/**
  * Parses a [JSONArray] of [JSONObject] into a [List] of models using the given [factory].
  */
 internal fun <T> JSONArray?.parseObjects(factory: (Any) -> T?): List<T> {
@@ -338,7 +346,6 @@ object JSONParceler : Parceler<Map<String, Any>> {
             Timber.e(e, "Failed to write a JSON map into a Parcel")
         }
     }
-
 }
 
 /**
