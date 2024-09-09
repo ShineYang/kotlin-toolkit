@@ -257,12 +257,7 @@ internal class EpubNavigatorViewModel(
      * Effective reading progression.
      */
     val readingProgression: PublicationReadingProgression get() =
-        if (useLegacySettings) {
-            publication.metadata.effectiveReadingProgression
-        } else when (settings.value.readingProgression) {
-            ReadingProgression.LTR -> PublicationReadingProgression.LTR
-            ReadingProgression.RTL -> PublicationReadingProgression.RTL
-        }
+        PublicationReadingProgression.LTR
 
     /**
      * Indicates whether the dual page mode is enabled.
